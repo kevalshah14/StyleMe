@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "StyleMe - Your Wardrobe, Styled by AI",
+  title: "StyleMe — Your Wardrobe, Styled by AI",
   description:
-    "Upload your clothes, describe the occasion, and get outfit picks from your own wardrobe. See how they look on you before you head out.",
+    "Upload your clothes and every piece is detected and cataloged automatically. Chat for outfit picks from your closet, shop the web for new finds, and try everything on virtually.",
   icons: {
     icon: "/favicon.svg",
   },

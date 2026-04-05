@@ -403,10 +403,12 @@ async def chat_response(
         )
 
         contents.append(candidate.content)
-        fn_resp_part = types.Part.from_function_response(
-            name="search_wardrobe",
-            response={"result": {"items": items_summary, "count": len(items)}},
-            id=fc_part.function_call.id,
+        fn_resp_part = types.Part(
+            function_response=types.FunctionResponse(
+                name="search_wardrobe",
+                response={"result": {"items": items_summary, "count": len(items)}},
+                id=fc_part.function_call.id,
+            )
         )
         contents.append(types.Content(role="user", parts=[fn_resp_part]))
 
@@ -597,10 +599,12 @@ def chat_response_stream(
         logger.info(f"Wardrobe search '{search_q}': {len(items)} results")
 
         contents.append(candidate.content)
-        fn_resp_part = types.Part.from_function_response(
-            name="search_wardrobe",
-            response={"result": {"items": _build_items_summary(items), "count": len(items)}},
-            id=fc_part.function_call.id,
+        fn_resp_part = types.Part(
+            function_response=types.FunctionResponse(
+                name="search_wardrobe",
+                response={"result": {"items": _build_items_summary(items), "count": len(items)}},
+                id=fc_part.function_call.id,
+            )
         )
         contents.append(types.Content(role="user", parts=[fn_resp_part]))
 
