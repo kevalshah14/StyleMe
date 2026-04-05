@@ -6,12 +6,7 @@ import json
 import logging
 
 from hydra_db import HydraDB
-from hydra_db.types.memory_item import MemoryItem
-from hydra_db.types.raw_embedding_document import RawEmbeddingDocument
-from PIL import Image
-
 from config import settings
-from services.embedder import embed_garment, embed_query
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +47,7 @@ def _compact_image_data_url(image_base64: str, max_size: int = 320, quality: int
 
 
 async def save_garment(user_id: str, garment: dict, image_base64: str) -> bool:
-    """Save garment via dual path: HydraDB user memory + raw embedding."""
+    """Save garment via HydraDB user memory."""
     client = _get_client()
     tenant = settings.hydradb_tenant_id
     sub_tenant = _sub_tenant(user_id)
@@ -60,10 +55,8 @@ async def save_garment(user_id: str, garment: dict, image_base64: str) -> bool:
 
     description = garment.get("description", "A clothing item")
     compact_image = _compact_image_data_url(image_base64)
-    memory_saved = False
-    embedding_saved = False
 
-    # PATH 1: Store as user memory (for hybrid recall)
+    # Store as user memory (with image embedded in Markdown)
     try:
         metadata_str = json.dumps({
             "garment_id": garment_id,
@@ -81,9 +74,16 @@ async def save_garment(user_id: str, garment: dict, image_base64: str) -> bool:
             "description": description,
             "image_base64": compact_image,
         })
+        
+        garment_type = garment.get("garment_type", "clothing item")
+        primary_color = garment.get("primary_color", "")
+        text_content = f"![{primary_color} {garment_type}]({compact_image})\n\nDescription: {description}\nColor: {primary_color}\nCategory: {garment_type}"
+        
+        from hydra_db.types.memory_item import MemoryItem
         memory = MemoryItem(
             source_id=garment_id,
-            text=description,
+            text=text_content,
+            is_markdown=True,
             infer=True,
             tenant_metadata=metadata_str,
         )
@@ -92,55 +92,22 @@ async def save_garment(user_id: str, garment: dict, image_base64: str) -> bool:
             tenant_id=tenant,
             sub_tenant_id=sub_tenant,
         )
-        memory_saved = True
         logger.info(f"Saved memory for garment {garment_id}")
+        return True
     except Exception as e:
         logger.error(f"Failed to save memory for {garment_id}: {e}")
-
-    # PATH 2: Store raw embedding (for vector search)
-    try:
-        vector = embed_garment(garment)
-
-        embedding_doc = RawEmbeddingDocument(
-            source_id=garment_id,
-            metadata={
-                "garment_id": garment_id,
-                "garment_type": garment.get("garment_type", ""),
-                "sub_type": garment.get("sub_type", ""),
-                "primary_color": garment.get("primary_color", ""),
-                "formality_level": garment.get("formality_level", 5),
-                "description": description,
-                "season": garment.get("season", []),
-                "style_tags": garment.get("style_tags", []),
-                "image_base64": compact_image,
-            },
-            embeddings=[{"chunk_id": f"{garment_id}_0", "embedding": vector}],
-        )
-
-        client.embeddings.insert(
-            tenant_id=tenant,
-            sub_tenant_id=sub_tenant,
-            embeddings=[embedding_doc],
-            upsert=True,
-        )
-        embedding_saved = True
-        logger.info(f"Saved embedding for garment {garment_id}")
-    except Exception as e:
-        logger.error(f"Failed to save embedding for {garment_id}: {e}")
-
-    return memory_saved or embedding_saved
+        return False
 
 
 async def search_wardrobe(user_id: str, query: str | None = None) -> list[dict]:
-    """Dual-path recall: HydraDB hybrid + embedding vector search."""
+    """HydraDB recall search."""
     client = _get_client()
     tenant = settings.hydradb_tenant_id
     sub_tenant = _sub_tenant(user_id)
     results = []
 
-    search_query = query or "clothing items"
+    search_query = query or "all clothing items"
 
-    # PATH 1: HydraDB native hybrid recall
     try:
         retrieval = client.recall.full_recall(
             query=search_query,
@@ -157,34 +124,12 @@ async def search_wardrobe(user_id: str, query: str | None = None) -> list[dict]:
         if retrieval and retrieval.chunks:
             for chunk in retrieval.chunks:
                 item = chunk.model_dump() if hasattr(chunk, "model_dump") else {"data": str(chunk)}
-                # Only add if not already in results by text match
                 existing_texts = {r.get("text", "")[:50] for r in results}
                 chunk_text = item.get("text", "")[:50]
                 if chunk_text and chunk_text not in existing_texts:
                     results.append(item)
     except Exception as e:
         logger.error(f"Memory recall failed: {e}")
-
-    # PATH 2: Embedding vector search (only when there's a specific query)
-    if query:
-        try:
-            query_vector = embed_query(query)
-            embedding_results = client.embeddings.search(
-                tenant_id=tenant,
-                sub_tenant_id=sub_tenant,
-                query_embedding=query_vector,
-                limit=20,
-                output_fields=["source_id", "score", "distance", "metadata"],
-            )
-            if embedding_results:
-                for r in embedding_results:
-                    item = r.model_dump() if hasattr(r, "model_dump") else {"data": str(r)}
-                    if item.get("metadata"):
-                        existing_ids = {res.get("source_id") or res.get("garment_id", "") for res in results}
-                        if item.get("source_id") not in existing_ids:
-                            results.append(item)
-        except Exception as e:
-            logger.error(f"Embedding search failed: {e}")
 
     return results
 
@@ -240,28 +185,7 @@ def normalize_match(item: dict) -> dict:
     }
 
 
-async def match_wardrobe_embeddings(user_id: str, query: str, limit: int = 12) -> list[dict]:
-    """Search HydraDB raw embeddings and return normalized wardrobe matches."""
-    client = _get_client()
-    tenant = settings.hydradb_tenant_id
-    sub_tenant = _sub_tenant(user_id)
 
-    query_vector = embed_query(query)
-    raw_results = client.embeddings.search(
-        tenant_id=tenant,
-        sub_tenant_id=sub_tenant,
-        query_embedding=query_vector,
-        limit=limit,
-        output_fields=["source_id", "score", "distance", "metadata"],
-        request_options={"timeout_in_seconds": 10},
-    )
-
-    matches = []
-    for result in raw_results or []:
-        item = result.model_dump() if hasattr(result, "model_dump") else {"data": str(result)}
-        matches.append(normalize_match(item))
-
-    return matches
 
 
 def _dedupe_matches(matches: list[dict]) -> list[dict]:
@@ -301,7 +225,7 @@ def _merge_missing_fields(primary: list[dict], secondary: list[dict]) -> list[di
 
 
 async def _hydrate_images_from_memory(user_id: str, matches: list[dict]) -> list[dict]:
-    """Backfill missing images from memory recall for older/partial embeddings."""
+    """Ensure images are preserved for garments missing them by querying memory explicitly."""
     if not matches:
         return matches
 
@@ -310,7 +234,7 @@ async def _hydrate_images_from_memory(user_id: str, matches: list[dict]) -> list
         return matches
 
     try:
-        recalled = await search_wardrobe(user_id, "all clothing items")
+        recalled = await search_wardrobe(user_id, "all clothing items with images")
     except Exception as e:
         logger.error(f"Image hydration recall failed: {e}")
         return matches
@@ -338,59 +262,19 @@ async def _hydrate_images_from_memory(user_id: str, matches: list[dict]) -> list
 
 
 async def get_wardrobe_items(user_id: str, search: str | None = None, limit: int = 100) -> list[dict]:
-    """Return normalized wardrobe cards with image metadata, optimized for UI retrieval."""
+    """Return normalized wardrobe cards with image metadata, using HydraDB native search."""
     query = (search or "").strip()
-    effective_query = query or "all clothing items in my wardrobe"
     safe_limit = max(1, min(limit, 200))
 
     matches: list[dict] = []
-    memory_matches: list[dict] = []
-    embedding_matches: list[dict] = []
 
-    if query:
-        try:
-            embedding_matches = await match_wardrobe_embeddings(
-                user_id=user_id,
-                query=effective_query,
-                limit=safe_limit,
-            )
-            matches = embedding_matches
-        except Exception as e:
-            logger.error(f"Primary embedding retrieval failed: {e}")
-    else:
-        # For list view, use recall first to increase coverage.
-        try:
-            recalled = await search_wardrobe(user_id, None)
-            memory_matches = [normalize_match(item) for item in recalled if isinstance(item, dict)]
-            matches = memory_matches
-        except Exception as e:
-            logger.error(f"Primary memory retrieval failed: {e}")
+    try:
+        recalled = await search_wardrobe(user_id, query or "all clothing items in my wardrobe")
+        matches = [normalize_match(item) for item in recalled if isinstance(item, dict)]
+    except Exception as e:
+        logger.error(f"Memory retrieval failed: {e}")
 
-        # Add embedding enrichment for image/metadata fill.
-        try:
-            embedding_matches = await match_wardrobe_embeddings(
-                user_id=user_id,
-                query=effective_query,
-                limit=safe_limit,
-            )
-        except Exception as e:
-            logger.error(f"Embedding enrichment failed: {e}")
-
-    # Fallback: whichever path has data.
-    if not matches:
-        if memory_matches:
-            matches = memory_matches
-        elif embedding_matches:
-            matches = embedding_matches
-        else:
-            try:
-                recalled = await search_wardrobe(user_id, query or None)
-                matches = [normalize_match(item) for item in recalled if isinstance(item, dict)]
-            except Exception as e:
-                logger.error(f"Fallback recall retrieval failed: {e}")
-                matches = []
-
-    # Final fallback: local JSON cache (always works, no network)
+    # Fallback: local JSON cache (always works, no network)
     if not matches:
         from services.local_cache import load_cache
         logger.info(f"Using local cache fallback for user {user_id}")
@@ -408,8 +292,6 @@ async def get_wardrobe_items(user_id: str, search: str | None = None, limit: int
         matches = cached
 
     normalized = _dedupe_matches(matches)
-    if embedding_matches and query == "":
-        normalized = _merge_missing_fields(normalized, _dedupe_matches(embedding_matches))
     normalized = await _hydrate_images_from_memory(user_id, normalized)
     return normalized[:safe_limit]
 
@@ -441,13 +323,25 @@ async def delete_garment(user_id: str, garment_id: str) -> bool:
     sub_tenant = _sub_tenant(user_id)
 
     try:
+        # First delete the actual memory data pointing to it
+        client.data.delete(
+            tenant_id=tenant,
+            sub_tenant_id=sub_tenant,
+            ids=[garment_id],
+        )
+    except Exception as e:
+        logger.error(f"Failed to delete data {garment_id}: {e}")
+
+    # Also make sure raw embeddings delete doesn't crash since we removed the raw embeddings logic, 
+    # but some old garments might still have raw embeddings we want to delete.
+    try:
         client.embeddings.delete(
             tenant_id=tenant,
             sub_tenant_id=sub_tenant,
             source_id=garment_id,
         )
-    except Exception as e:
-        logger.error(f"Failed to delete embedding {garment_id}: {e}")
+    except Exception:
+        pass
 
     try:
         client.data.delete(

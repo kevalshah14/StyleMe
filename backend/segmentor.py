@@ -21,6 +21,7 @@ from typing import Any
 
 import numpy as np
 from PIL import Image
+import torch
 from ultralytics.models.sam import SAM3SemanticPredictor
 
 MAX_TEXT_PROMPTS = 16
@@ -77,6 +78,19 @@ def _get_predictor(conf: float) -> SAM3SemanticPredictor:
                 "or set SAM3_WEIGHTS to the full path (see docs/SAM3.md)."
             )
         gc.collect()
+
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        device = "cpu"
+        if torch.backends.mps.is_available():
+            device = "mps"
+        elif torch.cuda.is_available():
+            device = "cuda"
+
+        logger.info(f"Loading SAM3 model on {device} with imgsz={SAM3_IMG_SIZE}")
+
         _predictor = SAM3SemanticPredictor(
             overrides=dict(
                 conf=conf,
@@ -85,9 +99,10 @@ def _get_predictor(conf: float) -> SAM3SemanticPredictor:
                 mode="predict",
                 model=SAM3_WEIGHTS,
                 imgsz=SAM3_IMG_SIZE,
-                half=False,
+                half=(device != "cpu"),
                 save=False,
                 verbose=False,
+                device=device,
             )
         )
     else:
