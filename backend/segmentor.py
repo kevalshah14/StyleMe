@@ -23,7 +23,10 @@ from PIL import Image
 from ultralytics.models.sam import SAM3SemanticPredictor
 
 MAX_TEXT_PROMPTS = 16
-DEFAULT_TEXT_PROMPTS: tuple[str, ...] = ("clothes",)
+DEFAULT_TEXT_PROMPTS: tuple[str, ...] = (
+    "shirt", "t-shirt", "pants", "jeans", "shorts", "jacket", "coat",
+    "hoodie", "sweater", "dress", "skirt", "shoes", "sneakers", "hat", "bag",
+)
 
 SAM3_WEIGHTS = os.environ.get("SAM3_WEIGHTS", "sam3.pt")
 SAM3_IMG_SIZE = int(os.environ.get("SAM3_IMG_SIZE", "1024"))

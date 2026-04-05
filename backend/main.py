@@ -2,7 +2,6 @@
 StyleMe API - SAM 3 segmentation -> Gemini labeling -> embedding -> HydraDB + local cache.
 
 JWT-backed routes: ``/api/identity/enroll``, ``/api/segment/me`` (face-grounded clothing).
-Other routes may pass ``user_id`` explicitly (e.g. ``/api/segment-and-store``).
 """
 
 import io
@@ -176,47 +175,39 @@ async def try_on(
         raise HTTPException(status_code=503, detail=str(e)) from e
 
 
-# Segment + Label + Embed + Store
+# Store pre-segmented items (no re-segmentation)
 
 
-@app.post("/api/segment-and-store")
-async def segment_and_store(
-    file: UploadFile = File(...),
-    user_id: str = Form(...),
-    prompts: str = Form("clothes"),
-    conf: float = Form(0.70),
-):
+class StoreSegmentsRequest(BaseModel):
+    user_id: str
+    image_base64: str
+    segments: list[dict]
+
+
+@app.post("/api/store")
+async def store_segments(body: StoreSegmentsRequest):
     """
-    Full pipeline: image -> SAM 3 -> Gemini labels -> cluster -> embed -> HydraDB + cache.
-    Returns saved items (without large image blobs).
+    Store already-segmented items. Accepts the original image + segment items
+    (mask_png, bbox, clothing annotations) from a prior ``/api/segment`` call.
+    Skips SAM entirely — goes straight to cutout → embed → cluster → store.
     """
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(400, "Expected an image file.")
-    data = await file.read()
-    if not data:
-        raise HTTPException(400, "Empty file.")
+    import base64
 
-    import segmentor
     from PIL import Image
 
-    # Step 1: Segment + annotate
-    parsed = segmentor.parse_prompts_param(prompts)
-    seg_result = segmentor.segment_image(data, prompts=parsed, conf=conf, annotate=True)
-    segments = seg_result.get("items", [])
+    if not body.segments:
+        return {"message": "No segments to store", "items_saved": 0, "items": [], "clusters": {}}
 
-    if not segments:
-        return {"message": "No clothing detected", "items_saved": 0, "items": [], "clusters": {}}
+    img_data = base64.b64decode(body.image_base64)
+    rgb = Image.open(io.BytesIO(img_data)).convert("RGB")
 
-    # Step 2: Ingest (cutout -> label -> embed -> cluster -> store)
-    rgb = Image.open(io.BytesIO(data)).convert("RGB")
     from services.ingest import ingest_segments
 
-    saved = await ingest_segments(user_id=user_id, rgb=rgb, segments=segments)
+    saved = await ingest_segments(user_id=body.user_id, rgb=rgb, segments=body.segments)
 
-    # Step 3: Build cluster summary
     from services.local_cache import get_cluster_summary
 
-    clusters = get_cluster_summary(user_id)
+    clusters = get_cluster_summary(body.user_id)
 
     return {
         "message": f"Stored {len(saved)} clothing items in {len(clusters)} clusters",

@@ -5,6 +5,19 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const DEFAULT_PROMPTS = "shirt,t-shirt,pants,jeans,shorts,jacket,coat,hoodie,sweater,dress,skirt,shoes,sneakers,hat,bag";
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      resolve(dataUrl.split(",")[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 type ClothingDetail = {
   garment_type: string;
@@ -202,8 +215,6 @@ export default function UploadPlayground() {
   const { user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [promptText, setPromptText] = useState("");
-  const [conf, setConf] = useState(0.7);
   const [myClothesOnly, setMyClothesOnly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -259,8 +270,7 @@ export default function UploadPlayground() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function onSegment(e: React.FormEvent) {
-    e.preventDefault();
+  async function onSegment() {
     setError(null);
     setResult(null);
     setIngestResult(null);
@@ -273,8 +283,8 @@ export default function UploadPlayground() {
     try {
       const body = new FormData();
       body.append("file", file);
-      body.append("prompts", promptText.trim() || "clothes");
-      body.append("conf", String(conf));
+      body.append("prompts", DEFAULT_PROMPTS);
+      body.append("conf", "0.7");
       body.append("annotate", "true");
       const endpoint = myClothesOnly ? "/api/segment/me" : "/api/segment";
       const headers: HeadersInit = {};
@@ -297,12 +307,16 @@ export default function UploadPlayground() {
     setIngesting(true);
     setError(null);
     try {
-      const body = new FormData();
-      body.append("file", file);
-      body.append("user_id", userId);
-      body.append("prompts", promptText.trim() || "clothes");
-      body.append("conf", String(conf));
-      const res = await fetch(`${API_BASE}/api/segment-and-store`, { method: "POST", body });
+      const imageBase64 = await fileToBase64(file);
+      const res = await fetch(`${API_BASE}/api/store`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          image_base64: imageBase64,
+          segments: result.items,
+        }),
+      });
       if (!res.ok) {
         const detail = (await res.json().catch(() => null)) as { detail?: string } | null;
         throw new Error(typeof detail?.detail === "string" ? detail.detail : `Failed (${res.status})`);
@@ -400,48 +414,21 @@ export default function UploadPlayground() {
             </button>
           </div>
 
-          {/* Segment form */}
+          {/* Segment controls */}
           {!result && (
-            <form onSubmit={onSegment} className="neo-card-sm flex flex-col gap-4 rounded-xl p-5">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-neo-mute">What to find</label>
-                  <textarea
-                    rows={2}
-                    placeholder="clothes — or jacket, pants, shoes"
-                    className="neo-input rounded-lg px-3 py-2.5 text-sm placeholder:text-neo-mute/40"
-                    value={promptText}
-                    onChange={(e) => setPromptText(e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-bold uppercase tracking-wider text-neo-mute">
-                      Confidence: <span className="text-neo-ink">{conf.toFixed(2)}</span>
-                    </label>
-                    <input
-                      type="range"
-                      min={0.7}
-                      max={0.99}
-                      step={0.01}
-                      value={conf}
-                      onChange={(e) => setConf(Number(e.target.value))}
-                      className="h-2 w-full cursor-pointer appearance-none rounded-full bg-neo-bg accent-neo-accent [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-neo-border [&::-webkit-slider-thumb]:bg-neo-accent [&::-webkit-slider-thumb]:shadow-[2px_2px_0_0_var(--neo-shadow)]"
-                    />
-                  </div>
-                  <label className="flex cursor-pointer items-center gap-2.5 text-xs font-bold text-neo-ink">
-                    <input
-                      type="checkbox"
-                      checked={myClothesOnly}
-                      onChange={(e) => setMyClothesOnly(e.target.checked)}
-                      className="h-4 w-4 rounded border-2 border-neo-border accent-neo-accent"
-                    />
-                    My clothes only (face matching)
-                  </label>
-                </div>
-              </div>
+            <div className="neo-card-sm flex flex-col gap-4 rounded-xl p-5">
+              <label className="flex cursor-pointer items-center gap-2.5 text-sm font-bold text-neo-ink">
+                <input
+                  type="checkbox"
+                  checked={myClothesOnly}
+                  onChange={(e) => setMyClothesOnly(e.target.checked)}
+                  className="h-4 w-4 rounded border-2 border-neo-border accent-neo-accent"
+                />
+                Only segment my clothes (group photo)
+              </label>
               <button
-                type="submit"
+                type="button"
+                onClick={onSegment}
                 disabled={loading || !file}
                 className="neo-btn neo-btn-pink flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold disabled:cursor-not-allowed"
               >
@@ -450,18 +437,18 @@ export default function UploadPlayground() {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
                       <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                     </svg>
-                    Segmenting with SAM 3 + Gemini…
+                    Detecting clothes…
                   </>
                 ) : (
                   <>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
                     </svg>
-                    Segment &amp; label
+                    Detect clothes
                   </>
                 )}
               </button>
-            </form>
+            </div>
           )}
 
           {/* Face matcher info */}
