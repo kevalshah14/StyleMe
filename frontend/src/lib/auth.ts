@@ -16,6 +16,20 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem("styleme_user_id");
+  localStorage.removeItem("styleme_onboarded");
+}
+
+export function setOnboarded() {
+  localStorage.setItem("styleme_onboarded", "true");
+}
+
+export function isOnboarded(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem("styleme_onboarded") === "true";
+}
+
+export function clearOnboarded() {
+  localStorage.removeItem("styleme_onboarded");
 }
 
 export function getUser(): User | null {
