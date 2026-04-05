@@ -20,19 +20,24 @@ The API can store a **per-user face embedding** (local InsightFace ONNX, no clou
 ## Quick Start
 
 ```bash
-# 1. Clone and install
 git clone https://github.com/kevalshah14/StyleMe.git
 cd StyleMe
+./setup.sh
+```
 
-# 2. Backend setup
+The setup script installs all dependencies, creates env files with auto-generated secrets, and tells you what to do next. The only manual step: add your `GEMINI_API_KEY` to `backend/.env`.
+
+### Manual setup (if you prefer)
+
+```bash
+# Backend
 cd backend
 cp .env.example .env          # then edit .env and add your GEMINI_API_KEY
 uv sync
 
-# 3. Frontend setup (new terminal)
+# Frontend (new terminal)
 cd frontend
-npm install
-cp .env.local.example .env.local   # or create manually (see below)
+npm install                   # .env.local auto-created on first `npm run dev`
 ```
 
 ### Environment files

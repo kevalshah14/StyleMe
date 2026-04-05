@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/ensure-env.js",
     "dev": "next dev",
-    "auth:migrate": "npx auth@latest migrate --yes --config ./src/lib/auth-server.ts",
+    "prebuild": "node scripts/ensure-env.js",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
