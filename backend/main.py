@@ -26,9 +26,9 @@ def health() -> dict[str, str]:
 async def segment(
     file: UploadFile = File(...),
     prompts: str = Form(""),
-    conf: float = Form(0.25),
+    conf: float = Form(0.85),
 ) -> dict:
-    """Upload an image; SAM 3 text prompts (comma/newline). Empty defaults to \"clothes\"."""
+    """Upload an image; SAM 3 text prompts (comma/newline). Empty defaults to \"clothes\". Results below min confidence are dropped (see segmentor.MIN_CONFIDENCE)."""
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Expected an image file (e.g. image/jpeg, image/png).")
 

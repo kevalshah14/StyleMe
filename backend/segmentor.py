@@ -23,6 +23,8 @@ DEFAULT_TEXT_PROMPTS: tuple[str, ...] = ("clothes",)
 
 SAM3_WEIGHTS = os.environ.get("SAM3_WEIGHTS", "sam3.pt")
 SAM3_IMG_SIZE = int(os.environ.get("SAM3_IMG_SIZE", "1024"))
+# Drop detections below this score (default 85%).
+MIN_CONFIDENCE = max(0.01, min(0.999, float(os.environ.get("SAM3_MIN_CONFIDENCE", "0.85"))))
 
 _predictor: SAM3SemanticPredictor | None = None
 _predictor_lock = threading.Lock()
@@ -105,15 +107,18 @@ def segment_image(
     mime_type: str | None = None,
     *,
     prompts: list[str] | None = None,
-    conf: float = 0.25,
+    conf: float = 0.85,
 ) -> dict[str, Any]:
     """
     Run SAM 3 text concept segmentation. Each phrase can yield multiple instances (e.g. all garments for "clothes").
 
     prompts=None → DEFAULT_TEXT_PROMPTS ("clothes",).
+    Results with confidence below MIN_CONFIDENCE (default 0.85) are omitted.
     """
     _ = mime_type
     text_prompts: list[str] = list(prompts) if prompts else list(DEFAULT_TEXT_PROMPTS)
+    # Model threshold cannot be lower than the output floor (avoids wasted low-conf proposals).
+    model_conf = max(float(conf), MIN_CONFIDENCE)
 
     im = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     w, h = im.size
@@ -121,7 +126,7 @@ def segment_image(
     im_bgr = rgb[:, :, ::-1].copy()
 
     with _predictor_lock:
-        predictor = _get_predictor(conf=conf)
+        predictor = _get_predictor(conf=model_conf)
         results = predictor(source=im_bgr, text=text_prompts)
 
     if not results:
@@ -130,6 +135,7 @@ def segment_image(
             "height": h,
             "detector": "sam3-text",
             "output": "mask",
+            "min_confidence": MIN_CONFIDENCE,
             "prompts": text_prompts,
             "items": [],
         }
@@ -143,6 +149,7 @@ def segment_image(
             "height": h,
             "detector": "sam3-text",
             "output": "mask",
+            "min_confidence": MIN_CONFIDENCE,
             "prompts": text_prompts,
             "items": [],
         }
@@ -170,6 +177,9 @@ def segment_image(
         except (KeyError, IndexError, TypeError):
             category = text_prompts[cid] if 0 <= cid < len(text_prompts) else (text_prompts[0] if text_prompts else "object")
 
+        if score < MIN_CONFIDENCE:
+            continue
+
         items_out.append(
             {
                 "category": str(category),
@@ -184,6 +194,7 @@ def segment_image(
         "height": h,
         "detector": "sam3-text",
         "output": "mask",
+        "min_confidence": MIN_CONFIDENCE,
         "prompts": text_prompts,
         "items": items_out,
     }

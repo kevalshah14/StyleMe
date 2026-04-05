@@ -16,6 +16,7 @@ type SegmentResponse = {
   height: number;
   detector: string;
   output?: string;
+  min_confidence?: number;
   prompts: string[];
   items: SegmentItem[];
 };
@@ -135,7 +136,7 @@ export default function SegmentPlayground() {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [promptText, setPromptText] = useState("");
-  const [conf, setConf] = useState(0.25);
+  const [conf, setConf] = useState(0.85);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SegmentResponse | null>(null);
@@ -257,14 +258,14 @@ export default function SegmentPlayground() {
 
         <div className="flex flex-col gap-1 sm:max-w-xs">
           <label htmlFor="conf" className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            Detection confidence: {conf.toFixed(2)}
+            SAM 3 score threshold: {conf.toFixed(2)} (results under 0.85 are never returned)
           </label>
           <input
             id="conf"
             type="range"
-            min={0.05}
-            max={0.85}
-            step={0.05}
+            min={0.85}
+            max={0.99}
+            step={0.01}
             value={conf}
             onChange={(e) => setConf(Number(e.target.value))}
             className="w-full accent-zinc-900 dark:accent-zinc-100"
@@ -303,7 +304,12 @@ export default function SegmentPlayground() {
           <h2 className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
             Detections ({result.items.length})
           </h2>
-          <p className="text-xs text-zinc-500">Prompts: {result.prompts.join(", ")}</p>
+          <p className="text-xs text-zinc-500">
+            Prompts: {result.prompts.join(", ")}
+            {typeof result.min_confidence === "number"
+              ? ` — min score ${result.min_confidence}`
+              : null}
+          </p>
           <ul className="flex flex-col gap-2">
             {result.items.map((item, i) => (
               <li
