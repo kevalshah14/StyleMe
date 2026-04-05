@@ -3,10 +3,6 @@
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { isOnboarded as checkOnboarded } from "@/lib/auth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 
 type StepAuthProps = {
   onAuthenticated: () => void;
@@ -66,7 +62,6 @@ export function StepAuth({ onAuthenticated, onReturningUser }: StepAuthProps) {
         setError(authError.message ?? "Sign in failed.");
         return;
       }
-      // Check if returning user (already onboarded)
       if (checkOnboarded()) {
         onReturningUser();
       } else {
@@ -81,28 +76,25 @@ export function StepAuth({ onAuthenticated, onReturningUser }: StepAuthProps) {
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in-up">
-      {/* Tab switcher */}
-      <div className="flex rounded-base border-2 border-border overflow-hidden">
+      <div className="flex overflow-hidden border-3 border-neo-border">
         <button
           type="button"
-          className={cn(
-            "flex-1 py-2.5 text-sm font-heading transition-colors",
+          className={`flex-1 py-2.5 text-xs font-extrabold uppercase tracking-wider transition-all ${
             mode === "signup"
-              ? "bg-main text-main-foreground"
-              : "bg-secondary-background text-foreground hover:bg-main/10"
-          )}
+              ? "bg-neo-accent text-white"
+              : "bg-neo-surface text-neo-mute hover:text-neo-ink hover:bg-neo-yellow-soft"
+          }`}
           onClick={() => { setMode("signup"); setError(null); }}
         >
           Sign Up
         </button>
         <button
           type="button"
-          className={cn(
-            "flex-1 py-2.5 text-sm font-heading border-l-2 border-border transition-colors",
+          className={`flex-1 py-2.5 text-xs font-extrabold uppercase tracking-wider border-l-3 border-neo-border transition-all ${
             mode === "signin"
-              ? "bg-main text-main-foreground"
-              : "bg-secondary-background text-foreground hover:bg-main/10"
-          )}
+              ? "bg-neo-accent text-white"
+              : "bg-neo-surface text-neo-mute hover:text-neo-ink hover:bg-neo-yellow-soft"
+          }`}
           onClick={() => { setMode("signin"); setError(null); }}
         >
           Sign In
@@ -112,79 +104,114 @@ export function StepAuth({ onAuthenticated, onReturningUser }: StepAuthProps) {
       {mode === "signup" ? (
         <form onSubmit={handleSignUp} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="signup-email">Email</Label>
-            <Input
+            <label htmlFor="signup-email" className="text-xs font-extrabold uppercase tracking-wider text-neo-ink">
+              Email
+            </label>
+            <input
               id="signup-email"
               type="email"
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              className="neo-input h-11 px-4 text-sm"
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="signup-password">Password</Label>
-            <Input
+            <label htmlFor="signup-password" className="text-xs font-extrabold uppercase tracking-wider text-neo-ink">
+              Password
+            </label>
+            <input
               id="signup-password"
               type="password"
               placeholder="Min 8 characters"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              className="neo-input h-11 px-4 text-sm"
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="signup-confirm">Confirm Password</Label>
-            <Input
+            <label htmlFor="signup-confirm" className="text-xs font-extrabold uppercase tracking-wider text-neo-ink">
+              Confirm Password
+            </label>
+            <input
               id="signup-confirm"
               type="password"
               placeholder="Confirm your password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
+              className="neo-input h-11 px-4 text-sm"
             />
           </div>
           {error && (
-            <div className="rounded-base border-2 border-border bg-[#fff0f0] px-3 py-2 text-sm font-base text-foreground">
-              {error}
+            <div className="flex items-start gap-2 border-2 border-neo-border bg-neo-pink-soft p-3 animate-pop-in">
+              <div className="mt-0.5 h-2 w-2 shrink-0 bg-neo-accent" />
+              <p className="text-xs font-bold text-neo-ink">{error}</p>
             </div>
           )}
-          <Button type="submit" disabled={loading} size="lg">
-            {loading ? "Creating account…" : "Create Account"}
-          </Button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="neo-btn neo-btn-pink h-11 text-sm"
+          >
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <div className="h-3.5 w-3.5 animate-spin border-2 border-white border-t-transparent rounded-full" />
+                Creating account…
+              </span>
+            ) : "Create Account"}
+          </button>
         </form>
       ) : (
         <form onSubmit={handleSignIn} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="signin-email">Email</Label>
-            <Input
+            <label htmlFor="signin-email" className="text-xs font-extrabold uppercase tracking-wider text-neo-ink">
+              Email
+            </label>
+            <input
               id="signin-email"
               type="email"
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              className="neo-input h-11 px-4 text-sm"
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="signin-password">Password</Label>
-            <Input
+            <label htmlFor="signin-password" className="text-xs font-extrabold uppercase tracking-wider text-neo-ink">
+              Password
+            </label>
+            <input
               id="signin-password"
               type="password"
               placeholder="Your password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              className="neo-input h-11 px-4 text-sm"
             />
           </div>
           {error && (
-            <div className="rounded-base border-2 border-border bg-[#fff0f0] px-3 py-2 text-sm font-base text-foreground">
-              {error}
+            <div className="flex items-start gap-2 border-2 border-neo-border bg-neo-pink-soft p-3 animate-pop-in">
+              <div className="mt-0.5 h-2 w-2 shrink-0 bg-neo-accent" />
+              <p className="text-xs font-bold text-neo-ink">{error}</p>
             </div>
           )}
-          <Button type="submit" disabled={loading} size="lg">
-            {loading ? "Signing in…" : "Sign In"}
-          </Button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="neo-btn neo-btn-pink h-11 text-sm"
+          >
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <div className="h-3.5 w-3.5 animate-spin border-2 border-white border-t-transparent rounded-full" />
+                Signing in…
+              </span>
+            ) : "Sign In"}
+          </button>
         </form>
       )}
     </div>

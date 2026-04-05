@@ -19,8 +19,6 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
 type ClothingDetail = {
   garment_type: string;
   body_region: string;
@@ -79,8 +77,6 @@ type QueueItem = {
   itemsSaved?: number;
 };
 
-// ── Canvas helpers ────────────────────────────────────────────────────────────
-
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -132,35 +128,31 @@ async function drawMasksAndBoxes(canvas: HTMLCanvasElement, imageSrc: string, it
   ctx.restore();
 }
 
-// ── Status Badge ──────────────────────────────────────────────────────────────
-
 function StatusBadge({ status, itemsSaved }: { status: FileStatus; itemsSaved?: number }) {
   if (status === "pending") return (
-    <span className="inline-flex items-center gap-1 rounded-full border-2 border-neo-border bg-neo-surface px-2 py-0.5 text-[10px] font-bold text-neo-mute">
-      <span className="h-1.5 w-1.5 rounded-full bg-neo-mute" /> Pending
+    <span className="inline-flex items-center gap-1.5 border-2 border-neo-border bg-neo-surface px-2.5 py-0.5 text-[10px] font-extrabold uppercase text-neo-mute">
+      <span className="h-1.5 w-1.5 rounded-full bg-neo-mute/50" /> Pending
     </span>
   );
   if (status === "processing") return (
-    <span className="inline-flex items-center gap-1 rounded-full border-2 border-neo-border bg-neo-cyan-soft px-2 py-0.5 text-[10px] font-bold text-neo-ink">
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="animate-spin"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
+    <span className="inline-flex items-center gap-1.5 border-2 border-neo-border bg-neo-cyan-soft px-2.5 py-0.5 text-[10px] font-extrabold uppercase text-neo-blue">
+      <div className="h-2.5 w-2.5 animate-spin border-[1.5px] border-neo-blue border-t-transparent rounded-full" />
       Processing…
     </span>
   );
   if (status === "done") return (
-    <span className="inline-flex items-center gap-1 rounded-full border-2 border-neo-border bg-neo-lime-soft px-2 py-0.5 text-[10px] font-bold text-neo-ink">
+    <span className="inline-flex items-center gap-1.5 border-2 border-neo-border bg-neo-lime-soft px-2.5 py-0.5 text-[10px] font-extrabold uppercase text-neo-green">
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
       {itemsSaved != null ? `${itemsSaved} saved` : "Done"}
     </span>
   );
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border-2 border-neo-border bg-neo-pink-soft px-2 py-0.5 text-[10px] font-bold text-neo-accent">
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+    <span className="inline-flex items-center gap-1.5 border-2 border-neo-border bg-neo-pink-soft px-2.5 py-0.5 text-[10px] font-extrabold uppercase text-neo-accent">
+      <div className="h-2 w-2 bg-neo-accent" />
       Error
     </span>
   );
 }
-
-// ── Queue Card ────────────────────────────────────────────────────────────────
 
 function QueueCard({ item, index, onRemove, isActive }: {
   item: QueueItem; index: number; onRemove: () => void; isActive: boolean;
@@ -181,23 +173,27 @@ function QueueCard({ item, index, onRemove, isActive }: {
   }, [item.previewUrl, item.segmentResult]);
 
   return (
-    <div className={`neo-card-sm flex gap-3 rounded-xl p-3 transition-all animate-fade-in ${isActive ? "ring-2 ring-neo-accent ring-offset-1" : ""}`}>
-      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border-2 border-neo-border bg-neo-bg">
+    <div className={`neo-card-sm flex gap-3 p-3 animate-fade-in-up transition-all ${isActive ? "ring-3 ring-neo-accent ring-offset-2 ring-offset-neo-bg" : ""}`}
+      style={{ animationDelay: `${index * 0.05}s` }}>
+      <div className="relative h-20 w-20 shrink-0 overflow-hidden border-2 border-neo-border bg-neo-bg">
         <canvas ref={canvasRef} className="h-full w-full object-cover" />
         {item.status === "processing" && (
           <div className="absolute inset-0 flex items-center justify-center bg-neo-bg/60">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin text-neo-accent">
-              <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-            </svg>
+            <div className="h-5 w-5 animate-spin border-2 border-neo-accent border-t-transparent rounded-full" />
+          </div>
+        )}
+        {item.status === "done" && (
+          <div className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center bg-neo-lime">
+            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
           </div>
         )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
-          <p className="truncate text-xs font-bold text-neo-ink">{index + 1}. {item.file.name}</p>
+          <p className="truncate text-xs font-extrabold text-neo-ink">{index + 1}. {item.file.name}</p>
           {item.status === "pending" && (
             <button type="button" onClick={onRemove}
-              className="shrink-0 flex h-5 w-5 items-center justify-center rounded border border-neo-border bg-neo-surface text-neo-mute hover:bg-neo-accent hover:text-white transition-colors"
+              className="shrink-0 flex h-5 w-5 items-center justify-center border border-neo-border bg-neo-surface text-neo-mute hover:bg-neo-accent hover:text-white transition-colors"
               aria-label="Remove">
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
             </button>
@@ -215,8 +211,6 @@ function QueueCard({ item, index, onRemove, isActive }: {
     </div>
   );
 }
-
-// ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function UploadPlayground() {
   const { user } = useAuth();
@@ -269,7 +263,6 @@ export default function UploadPlayground() {
       const item = queue[idx];
 
       try {
-        // Step 1: Segment
         const segBody = new FormData();
         segBody.append("file", item.file);
         segBody.append("prompts", DEFAULT_PROMPTS);
@@ -285,7 +278,6 @@ export default function UploadPlayground() {
         }
         const segResult: SegmentResponse = await segRes.json();
 
-        // Step 2: Auto-save via /api/store with base64
         let ingest: IngestResult | undefined;
         let itemsSaved = 0;
         if (segResult.items.length > 0 && userId) {
@@ -331,30 +323,31 @@ export default function UploadPlayground() {
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
       {/* Header */}
-      <header className="neo-card rounded-xl p-6">
+      <header className="neo-card p-6 animate-fade-in-up">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-lg border-2 border-neo-border bg-neo-cyan px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-neo-on-color shadow-[2px_2px_0_0_var(--neo-shadow)]">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-              Multi-Upload
+            <div className="flex items-center gap-3">
+              <div className="h-3 w-3 rounded-full border-2 border-neo-border bg-neo-blue" />
+              <div className="h-3 w-3 border-2 border-neo-border bg-neo-accent" />
+              <div className="h-[2px] w-8 bg-neo-border/30" />
             </div>
-            <h1 className="mt-3 text-2xl font-bold tracking-tight text-neo-ink md:text-3xl">Add clothes from photos</h1>
+            <h1 className="mt-4 text-3xl font-black uppercase tracking-tight text-neo-ink md:text-4xl">
+              Upload
+            </h1>
             <p className="mt-2 max-w-lg text-sm font-medium leading-relaxed text-neo-mute">
-              Upload multiple outfit photos — each is segmented and saved to your wardrobe automatically, one by one.
+              Drop outfit photos. Each one is segmented and saved to your wardrobe automatically.
             </p>
           </div>
           {queue.length > 0 && (
-            <div className="flex items-center gap-2 text-xs font-bold text-neo-mute">
-              <span className="rounded-lg border-2 border-neo-border bg-neo-surface px-2.5 py-1 shadow-[2px_2px_0_0_var(--neo-shadow)]">
+            <div className="flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-wider text-neo-mute animate-pop-in">
+              <span className="border-2 border-neo-border bg-neo-surface px-2.5 py-1 shadow-[2px_2px_0_0_var(--neo-shadow)]">
                 {queue.length} photo{queue.length === 1 ? "" : "s"}
               </span>
               {doneCount > 0 && (
-                <span className="rounded-lg border-2 border-neo-border bg-neo-lime-soft px-2.5 py-1 shadow-[2px_2px_0_0_var(--neo-shadow)] text-neo-ink">✓ {doneCount} done</span>
+                <span className="border-2 border-neo-border bg-neo-lime-soft px-2.5 py-1 text-neo-green shadow-[2px_2px_0_0_var(--neo-shadow)]">{doneCount} done</span>
               )}
               {errorCount > 0 && (
-                <span className="rounded-lg border-2 border-neo-border bg-neo-pink-soft px-2.5 py-1 shadow-[2px_2px_0_0_var(--neo-shadow)] text-neo-accent">{errorCount} error{errorCount === 1 ? "" : "s"}</span>
+                <span className="border-2 border-neo-border bg-neo-pink-soft px-2.5 py-1 text-neo-accent shadow-[2px_2px_0_0_var(--neo-shadow)]">{errorCount} err</span>
               )}
             </div>
           )}
@@ -363,20 +356,25 @@ export default function UploadPlayground() {
 
       {/* Drop zone */}
       <div
-        className={`drop-zone flex cursor-pointer flex-col items-center justify-center gap-4 px-6 py-10 text-center transition-all ${dragging ? "dragging" : ""}`}
+        className={`drop-zone flex cursor-pointer flex-col items-center justify-center gap-5 px-6 py-16 text-center animate-fade-in-up ${dragging ? "dragging" : ""}`}
+        style={{ animationDelay: "0.1s" }}
         onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
         onClick={() => fileInputRef.current?.click()}
         role="button" tabIndex={0}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click(); }}
       >
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border-3 border-neo-border bg-neo-cyan-soft shadow-[4px_4px_0_0_var(--neo-shadow)]">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neo-ink">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
+        <div className="relative">
+          <div className={`flex h-16 w-16 items-center justify-center border-3 border-neo-border bg-neo-blue shadow-[4px_4px_0_0_var(--neo-shadow)] transition-transform duration-300 ${dragging ? "scale-110 rotate-3" : ""}`}>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+          </div>
+          <div className={`absolute -bottom-1 -right-3 h-4 w-4 rounded-full border-2 border-neo-border bg-neo-yellow transition-transform duration-300 ${dragging ? "animate-wiggle" : ""}`} />
+          <div className="absolute -left-2 -top-1 h-3 w-3 border-2 border-neo-border bg-neo-accent/60 animate-pulse-soft" />
         </div>
         <div>
-          <p className="text-sm font-bold text-neo-ink">{dragging ? "Drop images here" : "Drag & drop photos"}</p>
-          <p className="mt-1 text-xs text-neo-mute">or click to browse · select multiple files</p>
+          <p className="text-sm font-extrabold uppercase text-neo-ink">{dragging ? "Drop here!" : "Drag & drop photos"}</p>
+          <p className="mt-1 text-xs text-neo-mute">or click to browse</p>
         </div>
         <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden"
           onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
@@ -385,42 +383,39 @@ export default function UploadPlayground() {
       {/* Queue */}
       {queue.length > 0 && (
         <section className="flex flex-col gap-4 animate-fade-in">
-          {/* Controls */}
-          <div className="neo-card-sm flex flex-col gap-4 rounded-xl p-4">
-            <label className="flex cursor-pointer items-center gap-2.5 text-sm font-bold text-neo-ink">
+          <div className="neo-card-sm flex flex-col gap-4 p-4">
+            <label className="flex cursor-pointer items-center gap-2.5 text-xs font-extrabold uppercase text-neo-ink">
               <input type="checkbox" checked={myClothesOnly}
                 onChange={(e) => setMyClothesOnly(e.target.checked)}
                 disabled={processing}
-                className="h-4 w-4 rounded border-2 border-neo-border accent-neo-accent" />
-              Only my clothes (group photo face matching)
+                className="h-4 w-4 border-2 border-neo-border accent-neo-accent" />
+              Only my clothes (face matching)
             </label>
             <div className="flex flex-wrap items-center gap-3">
               <button type="button" onClick={processQueue}
                 disabled={processing || pendingCount === 0}
-                className="neo-btn neo-btn-pink flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold disabled:cursor-not-allowed">
+                className="neo-btn neo-btn-pink flex items-center gap-2 px-5 py-2.5 text-xs disabled:cursor-not-allowed">
                 {processing ? (
                   <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
-                      <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-                    </svg>
-                    Processing photo {(activeIndex ?? 0) + 1} of {queue.length}…
+                    <div className="h-3.5 w-3.5 animate-spin border-2 border-white border-t-transparent rounded-full" />
+                    Processing {(activeIndex ?? 0) + 1}/{queue.length}…
                   </>
                 ) : (
                   <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                       <polygon points="5 3 19 12 5 21 5 3" />
                     </svg>
-                    Detect clothes in {pendingCount} photo{pendingCount === 1 ? "" : "s"}
+                    Detect in {pendingCount} photo{pendingCount === 1 ? "" : "s"}
                   </>
                 )}
               </button>
               {!processing && (
                 <button type="button" onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-2 rounded-xl border-2 border-neo-border bg-neo-surface px-4 py-2.5 text-sm font-bold text-neo-ink shadow-[3px_3px_0_0_var(--neo-shadow)] transition-all hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[1px_1px_0_0_var(--neo-shadow)]">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  className="flex items-center gap-2 border-2 border-neo-border bg-neo-surface px-4 py-2.5 text-xs font-extrabold uppercase text-neo-ink shadow-[3px_3px_0_0_var(--neo-shadow)] transition-all hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[1px_1px_0_0_var(--neo-shadow)]">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
                     <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
                   </svg>
-                  Add more
+                  Add More
                 </button>
               )}
               {!processing && pendingCount === 0 && (
@@ -432,7 +427,6 @@ export default function UploadPlayground() {
             </div>
           </div>
 
-          {/* Photo queue cards */}
           <div className="grid gap-3 sm:grid-cols-2">
             {queue.map((item, i) => (
               <QueueCard key={item.id} item={item} index={i} isActive={i === activeIndex} onRemove={() => removeItem(item.id)} />
@@ -441,40 +435,37 @@ export default function UploadPlayground() {
         </section>
       )}
 
-      {/* All done summary */}
+      {/* Done summary */}
       {allDone && doneCount > 0 && (
-        <div className="animate-scale-in neo-card rounded-xl p-5">
+        <div className="animate-pop-in neo-card p-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-neo-border bg-neo-lime shadow-[3px_3px_0_0_var(--neo-shadow)]">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center border-3 border-neo-border bg-neo-lime shadow-[3px_3px_0_0_var(--neo-shadow)]">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
             </div>
             <div>
-              <p className="text-sm font-bold text-neo-ink">
-                All done! {doneCount} photo{doneCount === 1 ? "" : "s"} processed
-                {totalSaved > 0 && ` — ${totalSaved} item${totalSaved === 1 ? "" : "s"} saved to wardrobe`}
+              <p className="text-sm font-extrabold uppercase text-neo-ink">
+                Done! {doneCount} photo{doneCount === 1 ? "" : "s"} processed
+                {totalSaved > 0 && ` — ${totalSaved} item${totalSaved === 1 ? "" : "s"} saved`}
               </p>
-              {errorCount > 0 && <p className="text-xs text-neo-mute mt-0.5">{errorCount} photo{errorCount === 1 ? "" : "s"} had errors</p>}
+              {errorCount > 0 && <p className="text-xs text-neo-mute mt-0.5">{errorCount} had errors</p>}
             </div>
           </div>
           <div className="mt-4 flex gap-3">
-            <Link href="/wardrobe" className="neo-btn neo-btn-yellow flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 9h18V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v4Z" /><path d="M3 11v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8" />
-              </svg>
-              View wardrobe
+            <Link href="/wardrobe" className="neo-btn neo-btn-yellow flex items-center gap-2 px-4 py-2 text-xs">
+              View Wardrobe
             </Link>
             <button type="button" onClick={clearAll}
-              className="flex items-center gap-2 rounded-lg border-2 border-neo-border bg-neo-surface px-4 py-2 text-xs font-bold text-neo-ink shadow-[3px_3px_0_0_var(--neo-shadow)] transition-all hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[1px_1px_0_0_var(--neo-shadow)]">
-              Upload more
+              className="flex items-center gap-2 border-2 border-neo-border bg-neo-surface px-4 py-2 text-xs font-extrabold uppercase text-neo-ink shadow-[3px_3px_0_0_var(--neo-shadow)] transition-all hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[1px_1px_0_0_var(--neo-shadow)]">
+              Upload More
             </button>
           </div>
         </div>
       )}
 
-      {/* Global error */}
+      {/* Error */}
       {globalError && (
-        <div className="animate-fade-in flex items-start gap-3 rounded-xl border-2 border-neo-border bg-neo-pink-soft p-4 shadow-[3px_3px_0_0_var(--neo-shadow)]">
-          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-2 border-neo-border bg-neo-accent">
+        <div className="animate-pop-in flex items-start gap-3 border-3 border-neo-border bg-neo-pink-soft p-4 shadow-[3px_3px_0_0_var(--neo-shadow)]">
+          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center border-2 border-neo-border bg-neo-accent">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </div>
           <p className="text-sm font-bold text-neo-ink">{globalError}</p>

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { PhotoDropzone } from "./PhotoDropzone";
 import { onboard } from "@/lib/api";
 import { setOnboarded } from "@/lib/auth";
@@ -42,11 +41,9 @@ export function StepSelfie({
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in-up">
-      <div className="flex flex-col gap-1">
-        <p className="text-xs font-base text-foreground/50">
-          A clear selfie helps us find you in group photos.
-        </p>
-      </div>
+      <p className="text-xs font-medium text-neo-mute">
+        A clear selfie helps us find you in group photos.
+      </p>
       <PhotoDropzone
         file={file}
         onFileSelect={onFileSelect}
@@ -54,13 +51,24 @@ export function StepSelfie({
         description="Face clearly visible, good lighting"
       />
       {error && (
-        <div className="rounded-base border-2 border-border bg-[#fff0f0] px-3 py-2 text-sm font-base text-foreground">
-          {error}
+        <div className="flex items-start gap-2 border-2 border-neo-border bg-neo-pink-soft p-3 animate-pop-in">
+          <div className="mt-0.5 h-2 w-2 shrink-0 bg-neo-accent" />
+          <p className="text-xs font-bold text-neo-ink">{error}</p>
         </div>
       )}
-      <Button type="button" disabled={!file || loading} size="lg" onClick={handleFinish}>
-        {loading ? "Setting up your profile…" : "Finish Setup"}
-      </Button>
+      <button
+        type="button"
+        disabled={!file || loading}
+        onClick={handleFinish}
+        className="neo-btn neo-btn-pink h-11 text-sm"
+      >
+        {loading ? (
+          <span className="flex items-center justify-center gap-2">
+            <div className="h-3.5 w-3.5 animate-spin border-2 border-white border-t-transparent rounded-full" />
+            Setting up your profile…
+          </span>
+        ) : "Finish Setup"}
+      </button>
     </div>
   );
 }

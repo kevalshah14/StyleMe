@@ -1,7 +1,5 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-
 const STEPS = ["Account", "Name", "Photo", "Selfie"] as const;
 
 type ProgressBarProps = {
@@ -16,6 +14,13 @@ const STEP_MAP: Record<string, number> = {
   complete: 4,
 };
 
+const STEP_COLORS = [
+  "bg-neo-accent",
+  "bg-neo-yellow",
+  "bg-neo-blue",
+  "bg-neo-lime",
+];
+
 export function ProgressBar({ currentStep }: ProgressBarProps) {
   const currentIndex = STEP_MAP[currentStep] ?? 0;
 
@@ -28,20 +33,21 @@ export function ProgressBar({ currentStep }: ProgressBarProps) {
         return (
           <div key={label} className="flex-1 flex flex-col items-center gap-1.5">
             <div
-              className={cn(
-                "h-2 w-full rounded-base border-2 border-border transition-all duration-300",
-                isCompleted && "bg-main",
-                isActive && "bg-main/60",
-                !isCompleted && !isActive && "bg-secondary-background"
-              )}
+              className={`h-2 w-full border-2 border-neo-border transition-all duration-500 ${
+                isCompleted ? STEP_COLORS[i] : isActive ? `${STEP_COLORS[i]} opacity-50` : "bg-neo-bg"
+              }`}
+              style={isCompleted ? { animation: "fillBar 0.4s ease-out forwards" } : undefined}
             />
             <span
-              className={cn(
-                "text-xs font-heading transition-colors",
-                (isCompleted || isActive) ? "text-foreground" : "text-foreground/40"
-              )}
+              className={`text-[10px] font-extrabold uppercase tracking-wider transition-colors ${
+                isCompleted ? "text-neo-ink" : isActive ? "text-neo-ink" : "text-neo-mute/50"
+              }`}
             >
-              {isCompleted ? "✓" : label}
+              {isCompleted ? (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="inline">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              ) : label}
             </span>
           </div>
         );

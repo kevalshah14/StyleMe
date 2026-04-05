@@ -1,9 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 type StepNameProps = {
   displayName: string;
@@ -26,20 +23,27 @@ export function StepName({ displayName, onNext }: StepNameProps) {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6 animate-fade-in-up">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="display-name">What should we call you?</Label>
-        <Input
+        <label htmlFor="display-name" className="text-xs font-extrabold uppercase tracking-wider text-neo-ink">
+          Your display name
+        </label>
+        <input
           id="display-name"
-          placeholder="Alex"
+          placeholder="e.g. Alex"
           autoComplete="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           autoFocus
+          className="neo-input h-11 px-4 text-sm"
         />
-        <p className="text-xs font-base text-foreground/50">1–50 characters</p>
+        <p className="text-[10px] font-bold uppercase text-neo-mute">1–50 characters</p>
       </div>
-      <Button type="submit" disabled={!isValid} size="lg">
+      <button
+        type="submit"
+        disabled={!isValid}
+        className="neo-btn neo-btn-yellow h-11 text-sm"
+      >
         Continue
-      </Button>
+      </button>
     </form>
   );
 }

@@ -28,26 +28,22 @@ type ChatMsg = {
 };
 
 const SUGGESTIONS = [
-  { text: "Casual Friday office look", icon: "briefcase" },
-  { text: "Outfit for a dinner date", icon: "heart" },
-  { text: "Job interview — professional but not stiff", icon: "star" },
-  { text: "Something warm for rainy weather", icon: "cloud" },
-  { text: "Summer brunch outfit", icon: "sun" },
-  { text: "What goes with a navy blazer?", icon: "search" },
-] as const;
+  "Casual Friday office look",
+  "Outfit for a dinner date",
+  "Job interview — sharp but relaxed",
+  "Something warm for rainy weather",
+  "Summer brunch outfit",
+  "What goes with a navy blazer?",
+];
 
-function SuggestionIcon({ name }: { name: string }) {
-  const props = { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-  switch (name) {
-    case "briefcase": return <svg {...props}><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" /></svg>;
-    case "heart": return <svg {...props}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>;
-    case "star": return <svg {...props}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>;
-    case "cloud": return <svg {...props}><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" /></svg>;
-    case "sun": return <svg {...props}><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>;
-    case "search": return <svg {...props}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>;
-    default: return null;
-  }
-}
+const CHIP_COLORS = [
+  "hover:bg-neo-pink-soft",
+  "hover:bg-neo-yellow-soft",
+  "hover:bg-neo-cyan-soft",
+  "hover:bg-neo-lime-soft",
+  "hover:bg-neo-peach",
+  "hover:bg-neo-lavender",
+];
 
 export function OutfitChat() {
   const { user } = useAuth();
@@ -97,23 +93,14 @@ export function OutfitChat() {
           },
         ]);
         setLoading(false);
-
-        if (matches.length > 0) {
-          triggerTryOn(msgIndex, matches, trimmed);
-        }
+        if (matches.length > 0) triggerTryOn(msgIndex, matches, trimmed);
         return;
       } else {
         const raw = await res.text();
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", text: `Could not get suggestions.${raw ? ` (${raw.slice(0, 120)})` : ""}` },
-        ]);
+        setMessages((prev) => [...prev, { role: "assistant", text: `Error.${raw ? ` (${raw.slice(0, 120)})` : ""}` }]);
       }
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", text: `Could not reach the API at ${API_BASE}. Is the backend running?` },
-      ]);
+      setMessages((prev) => [...prev, { role: "assistant", text: `Cannot reach API at ${API_BASE}.` }]);
     } finally {
       setLoading(false);
     }
@@ -131,27 +118,17 @@ export function OutfitChat() {
         const data = await res.json();
         const selectedIds = new Set<string>(data.selected_garment_ids ?? garmentIds);
         setMessages((prev) =>
-          prev.map((m, i) =>
-            i === msgIndex
-              ? { ...m, tryOnImage: data.generated_image, tryOnLoading: false, selectedIds }
-              : m,
-          ),
+          prev.map((m, i) => i === msgIndex ? { ...m, tryOnImage: data.generated_image, tryOnLoading: false, selectedIds } : m),
         );
       } else {
         const detail = (await res.json().catch(() => null)) as { detail?: string } | null;
         setMessages((prev) =>
-          prev.map((m, i) =>
-            i === msgIndex
-              ? { ...m, tryOnLoading: false, tryOnError: detail?.detail || "Try-on failed" }
-              : m,
-          ),
+          prev.map((m, i) => i === msgIndex ? { ...m, tryOnLoading: false, tryOnError: detail?.detail || "Try-on failed" } : m),
         );
       }
     } catch {
       setMessages((prev) =>
-        prev.map((m, i) =>
-          i === msgIndex ? { ...m, tryOnLoading: false, tryOnError: "Could not generate try-on" } : m,
-        ),
+        prev.map((m, i) => i === msgIndex ? { ...m, tryOnLoading: false, tryOnError: "Could not generate try-on" } : m),
       );
     }
   }
@@ -165,57 +142,64 @@ export function OutfitChat() {
     <div className="flex min-h-dvh flex-1 flex-col bg-neo-bg">
       <AppNav />
       <main className="relative mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 sm:px-6">
-        {/* ── Empty hero state ── */}
+        {/* Hero */}
         {messages.length === 0 && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-8 pb-32 pt-8 text-center">
-            <div className="relative">
-              <div className="animate-float">
-                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl border-3 border-neo-border bg-neo-accent shadow-[5px_5px_0_0_var(--neo-shadow)]">
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M6 3h12l3 6-9 13L3 9z" />
-                  </svg>
+          <div className="flex flex-1 flex-col items-center justify-center gap-10 pb-32 pt-8">
+            {/* Playful geometric composition */}
+            <div className="relative flex items-center justify-center">
+              <div className="animate-spin-slow absolute h-44 w-44 rounded-full border-3 border-dashed border-neo-border/15" />
+              <div className="relative z-10 flex items-center gap-4">
+                <div className="h-16 w-16 border-3 border-neo-border bg-neo-accent shadow-[4px_4px_0_0_var(--neo-shadow)] animate-bounce-in" />
+                <div className="h-16 w-16 rounded-full border-3 border-neo-border bg-neo-yellow shadow-[4px_4px_0_0_var(--neo-shadow)] animate-bounce-in" style={{ animationDelay: "0.1s" }} />
+                <div className="flex h-16 w-16 items-center justify-center border-3 border-neo-border bg-neo-blue shadow-[4px_4px_0_0_var(--neo-shadow)] animate-bounce-in" style={{ animationDelay: "0.2s" }}>
+                  <div style={{ width: 0, height: 0, borderLeft: "14px solid transparent", borderRight: "14px solid transparent", borderBottom: "24px solid white" }} />
                 </div>
               </div>
-              <div className="absolute -right-8 -top-4 h-6 w-6 rotate-12 rounded-md border-2 border-neo-border bg-neo-yellow shadow-[2px_2px_0_0_var(--neo-shadow)]" />
-              <div className="absolute -bottom-3 -left-6 h-5 w-5 -rotate-12 rounded-full border-2 border-neo-border bg-neo-lime shadow-[2px_2px_0_0_var(--neo-shadow)]" />
+              <div className="absolute -bottom-3 -right-6 h-6 w-6 border-2 border-neo-border bg-neo-lime animate-float" />
+              <div className="absolute -left-5 -top-3 h-5 w-5 rounded-full border-2 border-neo-border bg-neo-accent/60 animate-float-alt" />
+              <div className="absolute -bottom-1 left-2 h-3 w-3 rounded-full bg-neo-yellow/40 animate-pulse-soft" />
             </div>
 
-            <div className="max-w-lg">
-              <h1 className="text-3xl font-bold tracking-tight text-neo-ink sm:text-4xl">
-                What&apos;s the <span className="inline-block -rotate-1 rounded-lg bg-neo-yellow px-2 py-0.5 text-neo-on-color">occasion</span>?
+            <div className="max-w-lg text-center">
+              <h1 className="text-4xl font-black uppercase tracking-tight text-neo-ink sm:text-5xl">
+                What&apos;s the{" "}
+                <span className="relative inline-block -rotate-2 border-3 border-neo-border bg-neo-yellow px-3 py-1 text-neo-on-color shadow-[3px_3px_0_0_var(--neo-shadow)]">
+                  Occasion
+                  <div className="absolute -right-2 -top-2 h-3 w-3 rounded-full bg-neo-accent" />
+                </span>
+                ?
               </h1>
-              <p className="mx-auto mt-4 max-w-md text-sm font-medium leading-relaxed text-neo-mute sm:text-base">
-                Describe what you need and we&apos;ll find matching pieces from your wardrobe.
+              <p className="mx-auto mt-5 max-w-sm text-sm font-medium leading-relaxed text-neo-mute">
+                Describe what you need. We&apos;ll find the perfect outfit from your wardrobe and show you how it looks.
               </p>
             </div>
 
-            <div className="flex max-w-xl flex-wrap justify-center gap-2">
+            {/* Suggestion chips */}
+            <div className="flex max-w-xl flex-wrap justify-center gap-2.5">
               {SUGGESTIONS.map((s, i) => (
                 <button
-                  key={s.text}
+                  key={s}
                   type="button"
-                  onClick={() => sendMessage(s.text)}
-                  className="neo-tag neo-press flex items-center gap-2 px-3.5 py-2.5 text-left text-xs font-bold text-neo-ink opacity-0 animate-fade-in-up"
+                  onClick={() => sendMessage(s)}
+                  className={`neo-tag neo-press px-4 py-2.5 text-xs font-bold text-neo-ink opacity-0 animate-fade-in-up ${CHIP_COLORS[i % CHIP_COLORS.length]}`}
                   style={{ animationDelay: `${i * 0.07}s`, animationFillMode: "forwards" }}
                 >
-                  <span className="text-neo-mute">
-                    <SuggestionIcon name={s.icon} />
-                  </span>
-                  {s.text}
+                  {s}
                 </button>
               ))}
             </div>
 
-            <p className="mt-2 text-xs font-medium text-neo-mute">
+            <span className="flex items-center gap-2 text-xs font-medium text-neo-mute">
+              <span className="h-1.5 w-1.5 rounded-full bg-neo-accent animate-pulse-soft" />
               No clothes yet?{" "}
-              <Link href="/upload" className="font-bold text-neo-accent underline decoration-2 underline-offset-2 hover:text-neo-ink">
-                Upload some first
+              <Link href="/upload" className="font-extrabold uppercase text-neo-accent underline decoration-2 underline-offset-2 hover:text-neo-ink transition-colors">
+                Upload first
               </Link>
-            </p>
+            </span>
           </div>
         )}
 
-        {/* ── Messages ── */}
+        {/* Messages */}
         {messages.length > 0 && (
           <div className="flex flex-1 flex-col gap-5 pb-28 pt-6">
             {messages.map((msg, i) => (
@@ -223,134 +207,97 @@ export function OutfitChat() {
                 key={i}
                 className={`flex flex-col gap-3 ${msg.role === "user" ? "animate-slide-in-right items-end" : "animate-slide-in-left items-start"}`}
               >
-                <div className={`flex max-w-[88%] gap-2.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                <div className={`flex max-w-[88%] gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                   {/* Avatar */}
-                  <div className={`mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 border-neo-border shadow-[2px_2px_0_0_var(--neo-shadow)] ${
-                    msg.role === "user" ? "bg-neo-lime" : "bg-neo-accent"
+                  <div className={`mt-1 flex h-9 w-9 shrink-0 items-center justify-center border-2 border-neo-border shadow-[2px_2px_0_0_var(--neo-shadow)] transition-transform hover:scale-105 ${
+                    msg.role === "user" ? "rounded-full bg-neo-yellow" : "bg-neo-accent"
                   }`}>
                     {msg.role === "user" ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--neo-on-color)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                        <circle cx="12" cy="7" r="4" />
-                      </svg>
+                      <span className="text-sm font-black text-neo-on-color">U</span>
                     ) : (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M6 3h12l3 6-9 13L3 9z" />
-                      </svg>
+                      <div className="h-3 w-3 rounded-full bg-white" />
                     )}
                   </div>
 
                   {/* Bubble */}
-                  <div
-                    className={`rounded-xl border-2 border-neo-border px-4 py-3 shadow-[3px_3px_0_0_var(--neo-shadow)] ${
-                      msg.role === "user"
-                        ? "bg-neo-lime-soft"
-                        : "bg-neo-surface"
-                    }`}
-                  >
+                  <div className={`border-3 border-neo-border px-4 py-3 shadow-[3px_3px_0_0_var(--neo-shadow)] ${
+                    msg.role === "user" ? "bg-neo-yellow-soft" : "bg-neo-surface"
+                  }`}>
                     <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-neo-ink">{msg.text}</p>
                   </div>
                 </div>
 
-                {/* Match cards */}
+                {/* Match cards + try-on */}
                 {msg.matches && msg.matches.length > 0 && (
-                  <div className={`w-full max-w-[88%] ${msg.role === "user" ? "pr-10" : "pl-10"}`}>
-                    {/* Try-on result */}
+                  <div className={`w-full max-w-[88%] ${msg.role === "user" ? "pr-12" : "pl-12"}`}>
                     {msg.tryOnImage && (
-                      <div className="animate-scale-in mb-3 overflow-hidden rounded-xl border-2 border-neo-border shadow-[4px_4px_0_0_var(--neo-shadow)]">
+                      <div className="animate-pop-in mb-3 overflow-hidden border-3 border-neo-border shadow-[5px_5px_0_0_var(--neo-shadow)]">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={msg.tryOnImage}
-                          alt="Virtual try-on"
-                          className="w-full bg-black object-contain"
-                        />
-                        <div className="flex items-center gap-2 bg-neo-surface px-3 py-2">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-neo-accent">
-                            <path d="M6 3h12l3 6-9 13L3 9z" />
-                          </svg>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-neo-mute">
-                            Try-on preview · {msg.matches.length} piece{msg.matches.length === 1 ? "" : "s"}
+                        <img src={msg.tryOnImage} alt="Virtual try-on" className="w-full bg-black object-contain" />
+                        <div className="flex items-center gap-2 border-t-2 border-neo-border bg-neo-surface px-3 py-2">
+                          <div className="h-2.5 w-2.5 rounded-full bg-neo-accent animate-pulse-soft" />
+                          <span className="text-[10px] font-extrabold uppercase tracking-widest text-neo-mute">
+                            Try-on · {msg.matches.length} piece{msg.matches.length === 1 ? "" : "s"}
                           </span>
                         </div>
                       </div>
                     )}
 
-                    {/* Try-on loading */}
                     {msg.tryOnLoading && (
-                      <div className="animate-fade-in mb-3 flex items-center gap-3 rounded-xl border-2 border-neo-border bg-neo-yellow-soft p-4 shadow-[3px_3px_0_0_var(--neo-shadow)]">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin text-neo-accent">
-                          <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-                        </svg>
-                        <span className="text-xs font-bold text-neo-ink">Generating try-on preview…</span>
+                      <div className="animate-fade-in mb-3 flex items-center gap-3 border-3 border-neo-border bg-neo-yellow-soft p-4 shadow-[3px_3px_0_0_var(--neo-shadow)]">
+                        <div className="h-4 w-4 animate-spin border-2 border-neo-accent border-t-transparent rounded-full" />
+                        <span className="text-xs font-bold uppercase text-neo-ink">Generating try-on…</span>
                       </div>
                     )}
 
-                    {/* Try-on error */}
                     {msg.tryOnError && (
-                      <div className="mb-3 flex items-center gap-2 rounded-xl border-2 border-neo-border bg-neo-pink-soft p-3 text-xs font-bold text-neo-ink shadow-[2px_2px_0_0_var(--neo-shadow)]">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                      <div className="mb-3 flex items-center gap-2 border-2 border-neo-border bg-neo-pink-soft p-3 text-xs font-bold text-neo-ink shadow-[2px_2px_0_0_var(--neo-shadow)] animate-pop-in">
+                        <div className="h-3 w-3 bg-neo-accent" />
                         {msg.tryOnError}
                       </div>
                     )}
 
-                    {/* Matched garment cards — selected pieces highlighted */}
-                    <div className="stagger-grid grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                    <div className="stagger-grid grid grid-cols-2 gap-2 sm:grid-cols-3">
                       {msg.matches
                         .filter((item) => !msg.selectedIds || msg.selectedIds.has(item.garment_id))
-                        .map((item) => {
-                        const isSelected = !msg.selectedIds || msg.selectedIds.has(item.garment_id);
-                        return (
-                          <div key={item.garment_id} className={`neo-card-interactive overflow-hidden ${isSelected ? "" : "opacity-40"}`}>
+                        .map((item) => (
+                          <div key={item.garment_id} className="neo-card-interactive overflow-hidden">
                             {item.image_base64 ? (
                               // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={item.image_base64}
-                                alt={item.garment_type}
-                                className="aspect-square w-full bg-neo-bg object-contain"
-                              />
+                              <img src={item.image_base64} alt={item.garment_type} className="aspect-square w-full bg-neo-bg object-contain" />
                             ) : (
                               <div className="flex aspect-square w-full items-center justify-center bg-neo-bg">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-neo-mute/40">
-                                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                                  <circle cx="8.5" cy="8.5" r="1.5" />
-                                  <path d="m21 15-5-5L5 21" />
-                                </svg>
+                                <div className="h-8 w-8 border-2 border-neo-mute/20" />
                               </div>
                             )}
-                            <div className="p-2.5">
-                              <p className="truncate text-xs font-bold capitalize text-neo-ink">
-                                {item.garment_type}
-                              </p>
+                            <div className="border-t-2 border-neo-border p-2">
+                              <p className="truncate text-[11px] font-extrabold uppercase text-neo-ink">{item.garment_type}</p>
                               <p className="text-[10px] font-medium text-neo-mute">{item.primary_color}</p>
                             </div>
                           </div>
-                        );
-                      })}
+                        ))}
                     </div>
-                    <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-neo-mute">
-                      {msg.selectedIds ? msg.selectedIds.size : msg.matches.length} piece{(msg.selectedIds ? msg.selectedIds.size : msg.matches.length) === 1 ? "" : "s"} selected for outfit
+                    <p className="mt-2 text-[10px] font-extrabold uppercase tracking-widest text-neo-mute">
+                      {msg.selectedIds ? msg.selectedIds.size : msg.matches.length} piece{(msg.selectedIds ? msg.selectedIds.size : msg.matches.length) === 1 ? "" : "s"} selected
                     </p>
                   </div>
                 )}
               </div>
             ))}
 
-            {/* Loading indicator */}
             {loading && (
-              <div className="animate-fade-in flex items-start gap-2.5">
-                <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 border-neo-border bg-neo-accent shadow-[2px_2px_0_0_var(--neo-shadow)]">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M6 3h12l3 6-9 13L3 9z" />
-                  </svg>
+              <div className="animate-fade-in flex items-start gap-3">
+                <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center border-2 border-neo-border bg-neo-accent shadow-[2px_2px_0_0_var(--neo-shadow)]">
+                  <div className="h-3 w-3 rounded-full bg-white" />
                 </div>
-                <div className="rounded-xl border-2 border-neo-border bg-neo-yellow-soft px-4 py-3 shadow-[3px_3px_0_0_var(--neo-shadow)]">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex gap-1">
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-neo-mute" />
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-neo-mute [animation-delay:0.15s]" />
-                      <span className="h-2 w-2 animate-bounce rounded-full bg-neo-mute [animation-delay:0.3s]" />
+                <div className="border-3 border-neo-border bg-neo-yellow-soft px-4 py-3 shadow-[3px_3px_0_0_var(--neo-shadow)]">
+                  <div className="flex items-center gap-2.5">
+                    <span className="inline-flex gap-1.5">
+                      <span className="h-2 w-2 animate-bounce rounded-sm bg-neo-accent" />
+                      <span className="h-2 w-2 animate-bounce rounded-sm bg-neo-yellow" style={{ animationDelay: "0.15s" }} />
+                      <span className="h-2 w-2 animate-bounce rounded-sm bg-neo-blue" style={{ animationDelay: "0.3s" }} />
                     </span>
-                    <span className="text-xs font-bold text-neo-ink">Finding matching pieces…</span>
+                    <span className="text-xs font-bold uppercase text-neo-ink">Thinking…</span>
                   </div>
                 </div>
               </div>
@@ -359,37 +306,26 @@ export function OutfitChat() {
           </div>
         )}
 
-        {/* ── Composer bar ── */}
-        <div className="composer-bar fixed inset-x-0 bottom-0 z-30 border-t-2 border-neo-border px-4 py-3 sm:px-6">
-          <form onSubmit={onSubmit} className="mx-auto flex max-w-3xl gap-2.5">
-            <div className="relative flex-1">
-              <input
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Describe what you want to wear…"
-                className="neo-input h-12 w-full rounded-xl px-4 pr-10 text-sm placeholder:text-neo-mute/50"
-                disabled={loading}
-                autoComplete="off"
-              />
-              <svg
-                className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-neo-mute/40"
-                width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-            </div>
+        {/* Composer */}
+        <div className="composer-bar fixed inset-x-0 bottom-0 z-30 border-t-3 border-neo-border px-4 py-3 sm:px-6">
+          <form onSubmit={onSubmit} className="mx-auto flex max-w-3xl gap-2">
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="DESCRIBE YOUR OUTFIT…"
+              className="neo-input h-12 flex-1 px-4 text-sm uppercase placeholder:text-neo-mute/40 placeholder:font-bold"
+              disabled={loading}
+              autoComplete="off"
+            />
             <button
               type="submit"
               disabled={loading || !input.trim()}
-              className="neo-btn neo-btn-pink flex h-12 items-center gap-2 rounded-xl px-5 text-sm font-bold disabled:cursor-not-allowed"
+              className="neo-btn neo-btn-pink flex h-12 w-12 items-center justify-center disabled:cursor-not-allowed"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
               </svg>
-              <span className="hidden sm:inline">Send</span>
             </button>
           </form>
         </div>

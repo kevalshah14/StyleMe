@@ -76,9 +76,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   if (!ready) {
     return (
-      <div className="flex min-h-full flex-1 items-center justify-center">
-        <div className="rounded-base border-2 border-border bg-background px-8 py-6 text-lg font-heading shadow-shadow">
-          Loading…
+      <div className="flex min-h-full flex-1 items-center justify-center bg-neo-bg">
+        <div className="flex flex-col items-center gap-5 animate-fade-in">
+          <div className="relative flex items-center gap-3">
+            <div className="h-8 w-8 border-3 border-neo-border bg-neo-accent animate-bounce-in" style={{ animationDelay: "0s" }} />
+            <div className="h-8 w-8 rounded-full border-3 border-neo-border bg-neo-yellow animate-bounce-in" style={{ animationDelay: "0.1s" }} />
+            <div className="h-8 w-8 border-3 border-neo-border bg-neo-blue animate-bounce-in" style={{ animationDelay: "0.2s" }} />
+            <div className="absolute -bottom-2 -right-3 h-3 w-3 rounded-full bg-neo-lime animate-pulse-soft" />
+          </div>
+          <div className="flex flex-col items-center gap-1.5">
+            <p className="text-sm font-black uppercase tracking-widest text-neo-ink">
+              Style<span className="text-neo-accent">Me</span>
+            </p>
+            <div className="h-1 w-16 overflow-hidden bg-neo-bg">
+              <div className="h-full w-full bg-linear-to-r from-neo-accent via-neo-yellow to-neo-blue animate-gradient" />
+            </div>
+          </div>
         </div>
       </div>
     );

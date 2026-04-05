@@ -7,6 +7,7 @@ const spaceGrotesk = Space_Grotesk({
   variable: "--font-neo",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
@@ -15,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "StyleMe — SAM 3",
-  description: "Clothing segmentation with Meta SAM 3 (Ultralytics) and optional try-on",
+  title: "StyleMe",
+  description: "Your AI-powered wardrobe stylist",
 };
 
 export default function RootLayout({
