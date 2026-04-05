@@ -9,14 +9,9 @@ Monorepo with a Python backend and a Next.js frontend.
 
 ## Environment (backend)
 
-The backend uses a **Gemini API key** for Google AI. Create a local env file from the template:
+Segmentation uses **Meta SAM 3** via Ultralytics ([`docs/SAM3.md`](docs/SAM3.md)): **text noun phrases** (e.g. `clothes`) segment all matching instances. You must download **`sam3.pt`** from [Hugging Face `facebook/sam3`](https://huggingface.co/facebook/sam3) (gated access), then set `SAM3_WEIGHTS` in `backend/.env` or put the file in the backend working directory. Dependencies include **`timm`** and Ultralytics’ **`clip`** (see `pyproject.toml`).
 
-```bash
-cd backend
-cp .env.example .env
-```
-
-Edit `.env` and set `GEMINI_API_KEY` to your key from [Google AI Studio](https://aistudio.google.com/apikey). The real `.env` file is gitignored; only `.env.example` is committed.
+Copy `backend/.env.example` to `backend/.env` for paths and server options.
 
 ## Backend
 

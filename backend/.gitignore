@@ -9,3 +9,6 @@ wheels/
 # Virtual environments
 .venv
 .env
+
+# Downloaded model weights (e.g. sam3.pt)
+*.pt
