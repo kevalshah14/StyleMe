@@ -42,6 +42,9 @@ async def onboard(
         idf.save_user_embedding(user_id, emb)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError:
+        # insightface not available — skip face enrollment, onboarding still succeeds
+        pass
 
     try:
         up.save_full_body_photo(user_id, fb_data, full_body.content_type)

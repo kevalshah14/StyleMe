@@ -53,7 +53,14 @@ def _get_face_app():
     with _face_lock:
         if _face_app is not None:
             return _face_app
-        from insightface.app import FaceAnalysis
+        try:
+            from insightface.app import FaceAnalysis
+        except (ImportError, Exception) as exc:
+            raise RuntimeError(
+                "insightface is not installed or failed to load. "
+                "Face features are unavailable. "
+                f"Original error: {exc}"
+            ) from exc
 
         MODEL_ROOT.mkdir(parents=True, exist_ok=True)
         app = FaceAnalysis(name=INSIGHTFACE_MODEL, root=str(MODEL_ROOT))
