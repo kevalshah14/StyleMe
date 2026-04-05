@@ -4,11 +4,20 @@ import { useEffect, useRef, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
+type ClothingDetail = {
+  garment_type: string;
+  body_region: string;
+  short_label: string;
+  notable_details?: string;
+};
+
 type SegmentItem = {
   category: string;
   bbox: number[];
   confidence: number;
   mask_png: string;
+  segment_file?: string;
+  clothing?: ClothingDetail;
 };
 
 type SegmentResponse = {
@@ -17,6 +26,9 @@ type SegmentResponse = {
   detector: string;
   output?: string;
   min_confidence?: number;
+  segments_dir?: string | null;
+  gemini_model?: string | null;
+  gemini_annotation_error?: string | null;
   prompts: string[];
   items: SegmentItem[];
 };
@@ -137,6 +149,7 @@ export default function SegmentPlayground() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [promptText, setPromptText] = useState("");
   const [conf, setConf] = useState(0.85);
+  const [annotateGemini, setAnnotateGemini] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SegmentResponse | null>(null);
@@ -183,6 +196,7 @@ export default function SegmentPlayground() {
       body.append("file", file);
       body.append("prompts", promptText.trim());
       body.append("conf", String(conf));
+      body.append("annotate", annotateGemini ? "true" : "false");
 
       const res = await fetch(`${API_BASE}/api/segment`, {
         method: "POST",
@@ -277,8 +291,23 @@ export default function SegmentPlayground() {
           disabled={loading || !file}
           className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
-          {loading ? "Running SAM 3…" : "Segment"}
+          {loading
+            ? annotateGemini
+              ? "Running SAM 3 + Gemini…"
+              : "Running SAM 3…"
+            : "Segment"}
         </button>
+
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-800 dark:text-zinc-200">
+          <input
+            type="checkbox"
+            checked={annotateGemini}
+            onChange={(e) => setAnnotateGemini(e.target.checked)}
+            className="rounded border-zinc-400 accent-zinc-900 dark:accent-zinc-100"
+          />
+          Label each segment with Gemini (needs{" "}
+          <code className="text-xs">GEMINI_API_KEY</code> on the API)
+        </label>
       </form>
 
       {error ? (
@@ -310,6 +339,21 @@ export default function SegmentPlayground() {
               ? ` — min score ${result.min_confidence}`
               : null}
           </p>
+          {result.segments_dir ? (
+            <p className="text-xs text-zinc-600 dark:text-zinc-400">
+              Saved cutouts: <code className="break-all">{result.segments_dir}</code>
+            </p>
+          ) : null}
+          {result.gemini_model ? (
+            <p className="text-xs text-zinc-600 dark:text-zinc-400">
+              Gemini model: <code className="text-xs">{result.gemini_model}</code>
+            </p>
+          ) : null}
+          {result.gemini_annotation_error ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+              Gemini annotation: {result.gemini_annotation_error}
+            </p>
+          ) : null}
           <ul className="flex flex-col gap-2">
             {result.items.map((item, i) => (
               <li
@@ -318,13 +362,33 @@ export default function SegmentPlayground() {
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-medium capitalize text-zinc-900 dark:text-zinc-100">
-                    {item.category}
+                    {item.clothing?.short_label ?? item.category}
                   </span>
                   <span className="text-zinc-600 dark:text-zinc-400">score {item.confidence}</span>
                 </div>
+                {item.clothing ? (
+                  <div className="text-xs text-zinc-600 dark:text-zinc-300">
+                    <span className="font-medium text-zinc-800 dark:text-zinc-100">Gemini: </span>
+                    {item.clothing.garment_type}
+                    <span className="text-zinc-500 dark:text-zinc-400"> — {item.clothing.body_region}</span>
+                    {item.clothing.notable_details ? (
+                      <span className="mt-0.5 block text-zinc-500 dark:text-zinc-400">
+                        {item.clothing.notable_details}
+                      </span>
+                    ) : null}
+                    <span className="mt-0.5 block text-zinc-500 dark:text-zinc-400">
+                      SAM concept: {item.category}
+                    </span>
+                  </div>
+                ) : null}
                 <code className="text-xs text-zinc-500 dark:text-zinc-400">
                   bbox [x1, y1, x2, y2] = [{item.bbox.map((v) => Math.round(v)).join(", ")}]
                 </code>
+                {item.segment_file ? (
+                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                    file: {item.segment_file}
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>

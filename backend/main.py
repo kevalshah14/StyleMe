@@ -27,8 +27,9 @@ async def segment(
     file: UploadFile = File(...),
     prompts: str = Form(""),
     conf: float = Form(0.85),
+    annotate: bool = Form(False),
 ) -> dict:
-    """Upload an image; SAM 3 text prompts (comma/newline). Empty defaults to \"clothes\". Results below min confidence are dropped (see segmentor.MIN_CONFIDENCE)."""
+    """Upload an image; SAM 3 text prompts (comma/newline). Empty defaults to \"clothes\". Results below min confidence are dropped (see segmentor.MIN_CONFIDENCE). Set annotate=true to label each segment with Gemini (GEMINI_API_KEY)."""
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Expected an image file (e.g. image/jpeg, image/png).")
 
@@ -40,7 +41,13 @@ async def segment(
 
     try:
         parsed = segmentor.parse_prompts_param(prompts)
-        return segmentor.segment_image(data, mime_type=file.content_type, prompts=parsed, conf=conf)
+        return segmentor.segment_image(
+            data,
+            mime_type=file.content_type,
+            prompts=parsed,
+            conf=conf,
+            annotate=annotate,
+        )
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     except ValueError as e:

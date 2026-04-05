@@ -12,6 +12,9 @@ import io
 import os
 import re
 import threading
+import uuid
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -25,6 +28,13 @@ SAM3_WEIGHTS = os.environ.get("SAM3_WEIGHTS", "sam3.pt")
 SAM3_IMG_SIZE = int(os.environ.get("SAM3_IMG_SIZE", "1024"))
 # Drop detections below this score (default 85%).
 MIN_CONFIDENCE = max(0.01, min(0.999, float(os.environ.get("SAM3_MIN_CONFIDENCE", "0.85"))))
+
+_BACKEND_ROOT = Path(__file__).resolve().parent
+# Each run writes to SEGMENTS_OUTPUT_DIR/<run_id>/*.png (RGBA cutouts). Set SAVE_SEGMENTS=0 to disable.
+SEGMENTS_OUTPUT_DIR = Path(
+    os.environ.get("SEGMENTS_OUTPUT_DIR", str(_BACKEND_ROOT / "segments")),
+).expanduser()
+SAVE_SEGMENTS = os.environ.get("SAVE_SEGMENTS", "1").strip().lower() not in ("0", "false", "no")
 
 _predictor: SAM3SemanticPredictor | None = None
 _predictor_lock = threading.Lock()
@@ -102,18 +112,58 @@ def _mask_tensor_to_png(mask: Any, width: int, height: int) -> bytes | None:
     return buf.getvalue()
 
 
+def _safe_segment_filename(category: str) -> str:
+    s = re.sub(r"[^\w\-]+", "_", str(category).strip(), flags=re.UNICODE)
+    return (s[:48] or "segment").strip("_")
+
+
+def _write_rgba_cutout(rgb: Image.Image, mask_png_bytes: bytes, path: Path) -> None:
+    """Save masked region as PNG with alpha (outside mask transparent)."""
+    mask = Image.open(io.BytesIO(mask_png_bytes)).convert("L")
+    if mask.size != rgb.size:
+        mask = mask.resize(rgb.size, Image.Resampling.NEAREST)
+    r, g, b = rgb.split()
+    rgba = Image.merge("RGBA", (r, g, b, mask))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rgba.save(path, format="PNG")
+
+
+def _persist_segment_files(rgb: Image.Image, items: list[dict[str, Any]]) -> str | None:
+    """
+    Write one RGBA PNG per item. Mutates items with key segment_file (filename only).
+    Returns absolute path to the run directory, or None if disabled / empty.
+    """
+    if not SAVE_SEGMENTS or not items:
+        return None
+    run_id = f"{datetime.now():%Y%m%d-%H%M%S}_{uuid.uuid4().hex[:8]}"
+    run_dir = SEGMENTS_OUTPUT_DIR / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    for idx, it in enumerate(items):
+        key = "mask_png"
+        if key not in it:
+            continue
+        mask_bytes = base64.b64decode(it[key])
+        fname = f"{idx:03d}_{_safe_segment_filename(it.get('category', 'object'))}.png"
+        out_path = run_dir / fname
+        _write_rgba_cutout(rgb, mask_bytes, out_path)
+        it["segment_file"] = fname
+    return str(run_dir.resolve())
+
+
 def segment_image(
     image_bytes: bytes,
     mime_type: str | None = None,
     *,
     prompts: list[str] | None = None,
     conf: float = 0.85,
+    annotate: bool = False,
 ) -> dict[str, Any]:
     """
     Run SAM 3 text concept segmentation. Each phrase can yield multiple instances (e.g. all garments for "clothes").
 
     prompts=None → DEFAULT_TEXT_PROMPTS ("clothes",).
     Results with confidence below MIN_CONFIDENCE (default 0.85) are omitted.
+    annotate=True runs Gemini on segment crops (requires GEMINI_API_KEY); see gemini_annotator.py.
     """
     _ = mime_type
     text_prompts: list[str] = list(prompts) if prompts else list(DEFAULT_TEXT_PROMPTS)
@@ -129,30 +179,27 @@ def segment_image(
         predictor = _get_predictor(conf=model_conf)
         results = predictor(source=im_bgr, text=text_prompts)
 
+    empty_base = {
+        "width": w,
+        "height": h,
+        "detector": "sam3-text",
+        "output": "mask",
+        "min_confidence": MIN_CONFIDENCE,
+        "prompts": text_prompts,
+        "segments_dir": None,
+        "gemini_model": None,
+        "gemini_annotation_error": None,
+        "items": [],
+    }
+
     if not results:
-        return {
-            "width": w,
-            "height": h,
-            "detector": "sam3-text",
-            "output": "mask",
-            "min_confidence": MIN_CONFIDENCE,
-            "prompts": text_prompts,
-            "items": [],
-        }
+        return {**empty_base}
 
     r0 = results[0]
     items_out: list[dict[str, Any]] = []
 
     if r0.masks is None or len(r0.masks) == 0:
-        return {
-            "width": w,
-            "height": h,
-            "detector": "sam3-text",
-            "output": "mask",
-            "min_confidence": MIN_CONFIDENCE,
-            "prompts": text_prompts,
-            "items": [],
-        }
+        return {**empty_base}
 
     n_m = len(r0.masks)
     boxes = r0.boxes
@@ -189,6 +236,17 @@ def segment_image(
             }
         )
 
+    segments_dir = _persist_segment_files(im, items_out)
+
+    gemini_model: str | None = None
+    gemini_annotation_error: str | None = None
+    if annotate and items_out:
+        from gemini_annotator import run_clothing_annotation
+
+        gmeta = run_clothing_annotation(im, items_out)
+        gemini_model = gmeta.get("gemini_model")
+        gemini_annotation_error = gmeta.get("gemini_annotation_error")
+
     return {
         "width": w,
         "height": h,
@@ -196,5 +254,8 @@ def segment_image(
         "output": "mask",
         "min_confidence": MIN_CONFIDENCE,
         "prompts": text_prompts,
+        "segments_dir": segments_dir,
+        "gemini_model": gemini_model,
+        "gemini_annotation_error": gemini_annotation_error,
         "items": items_out,
     }

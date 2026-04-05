@@ -12,3 +12,6 @@ wheels/
 
 # Downloaded model weights (e.g. sam3.pt)
 *.pt
+
+# Exported segment cutouts (see SEGMENTS_OUTPUT_DIR)
+segments/
