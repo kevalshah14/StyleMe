@@ -1,6 +1,21 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 :root {
+  --border-radius: 5px;
+  --box-shadow-x: 4px;
+  --box-shadow-y: 4px;
+  --reverse-box-shadow-x: -4px;
+  --reverse-box-shadow-y: -4px;
+  --heading-font-weight: 700;
+  --base-font-weight: 500;
+  --main: #ff2d6d;
+  --main-foreground: #000000;
+  --secondary-background: #ffffff;
+  --overlay: rgba(0,0,0,0.8);
+  --ring: #0a0a0a;
+  --shadow: 4px 4px 0px 0px var(--border);
+
   --neo-ink: #0a0a0a;
   --neo-bg: #fff8f0;
   --neo-surface: #ffffff;
@@ -26,6 +41,12 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    --main: #fb7185;
+    --main-foreground: #000000;
+    --secondary-background: #232329;
+    --ring: #fafafa;
+    --shadow: 4px 4px 0px 0px var(--border);
+
     --neo-ink: #fafafa;
     --neo-bg: #141417;
     --neo-surface: #232329;
@@ -72,8 +93,32 @@
   --color-neo-cyan: var(--neo-accent-2);
   --color-neo-blue: var(--neo-blue);
   --color-neo-green: var(--neo-green);
+  --color-main: var(--main);
+  --color-secondary-background: var(--secondary-background);
+  --color-main-foreground: var(--main-foreground);
+  --color-overlay: var(--overlay);
+  --color-ring: var(--ring);
+
+  --spacing-boxShadowX: var(--box-shadow-x);
+  --spacing-boxShadowY: var(--box-shadow-y);
+  --spacing-reverseBoxShadowX: var(--reverse-box-shadow-x);
+  --spacing-reverseBoxShadowY: var(--reverse-box-shadow-y);
+
+  --radius-base: var(--border-radius);
+
+  --shadow-shadow: var(--shadow);
+
+  --font-weight-base: var(--base-font-weight);
+  --font-weight-heading: var(--heading-font-weight);
+
   --font-sans: var(--font-neo), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
+}
+
+@layer base {
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+  }
 }
 
 body {
