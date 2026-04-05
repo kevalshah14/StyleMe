@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist_Mono, Space_Grotesk } from "next/font/google";
-import { AuthProvider } from "@/components/auth/AuthProvider";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -16,8 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "StyleMe",
-  description: "Your wardrobe, styled by AI",
+  title: "StyleMe - Your Wardrobe, Styled by AI",
+  description:
+    "Upload your clothes, describe the occasion, and get outfit picks from your own wardrobe. See how they look on you before you head out.",
   icons: {
     icon: "/favicon.svg",
   },
@@ -34,8 +34,8 @@ export default function RootLayout({
       className={`${spaceGrotesk.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        <AuthProvider>{children}</AuthProvider>
+      <body className="min-h-full flex flex-col font-sans" suppressHydrationWarning>
+        {children}
       </body>
     </html>
   );

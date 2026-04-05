@@ -11,6 +11,22 @@ const LINKS = [
   { href: "/upload", label: "Upload", shape: "triangle" as const, color: "bg-neo-blue" },
 ] as const;
 
+function HangerIcon({ size = 40, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
+      <path d="M32 8C32 8 26 8 26 14C26 18 30 19 32 19" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" fill="none"/>
+      <path d="M32 19L32 24L14 36M32 24L50 36" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+      <line x1="14" y1="36" x2="50" y2="36" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"/>
+      <line x1="21" y1="36" x2="21" y2="40" stroke="currentColor" strokeWidth="1.5"/>
+      <line x1="32" y1="36" x2="32" y2="39.5" stroke="currentColor" strokeWidth="1.5"/>
+      <line x1="43" y1="36" x2="43" y2="40" stroke="currentColor" strokeWidth="1.5"/>
+      <rect x="17" y="40" width="8" height="8" fill="var(--neo-accent)" stroke="currentColor" strokeWidth="2"/>
+      <circle cx="32" cy="44" r="4.5" fill="var(--neo-yellow)" stroke="currentColor" strokeWidth="2"/>
+      <polygon points="43,48 47,40 39,40" fill="var(--neo-blue)" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
 function BauhausShape({ shape, size = 10, className = "" }: { shape: "circle" | "square" | "triangle"; size?: number; className?: string }) {
   if (shape === "circle") return <div className={`rounded-full border-2 border-current ${className}`} style={{ width: size, height: size }} />;
   if (shape === "triangle") return (
@@ -28,9 +44,9 @@ export function AppNav() {
     <header className="sticky top-0 z-40 border-b-3 border-neo-border bg-neo-surface/95 backdrop-blur-sm">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-5">
-          <Link href="/" className="group flex items-center gap-3">
-            <div className="relative flex h-10 w-10 items-center justify-center border-3 border-neo-border bg-neo-accent shadow-[4px_4px_0_0_var(--neo-shadow)] transition-all duration-200 group-hover:translate-x-[2px] group-hover:translate-y-[2px] group-hover:shadow-[2px_2px_0_0_var(--neo-shadow)] group-hover:rotate-3">
-              <div className="h-4 w-4 rounded-full bg-white transition-transform group-hover:scale-110" />
+          <Link href="/" className="group flex items-center gap-2">
+            <div className="transition-transform duration-200 group-hover:rotate-3 group-hover:scale-105">
+              <HangerIcon size={36} className="text-neo-ink" />
             </div>
             <span className="hidden text-xl font-black uppercase tracking-tight text-neo-ink sm:block">
               Style<span className="text-neo-accent">Me</span>
