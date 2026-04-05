@@ -285,11 +285,36 @@ def segment_image(
             }
         )
 
+    return _finish_segment_response(
+        im,
+        items_out,
+        w=w,
+        h=h,
+        text_prompts=text_prompts,
+        annotate=annotate,
+        write_segment_files=write_segment_files,
+    )
+
+
+def _finish_segment_response(
+    im: Image.Image,
+    items_out: list[dict[str, Any]],
+    *,
+    w: int,
+    h: int,
+    text_prompts: list[str],
+    annotate: bool,
+    write_segment_files: bool,
+    extra_response_keys: dict[str, Any] | None = None,
+    gemini_prefill: tuple[str | None, str | None] | None = None,
+) -> dict[str, Any]:
     segments_dir: str | None = _persist_segment_files(im, items_out) if write_segment_files else None
 
     gemini_model: str | None = None
     gemini_annotation_error: str | None = None
-    if annotate and items_out:
+    if gemini_prefill is not None:
+        gemini_model, gemini_annotation_error = gemini_prefill
+    elif annotate and items_out:
         from gemini_annotator import run_clothing_annotation
 
         gmeta = run_clothing_annotation(im, items_out)
@@ -310,7 +335,7 @@ def segment_image(
         )
         segment_manifest = SEGMENTS_MANIFEST_NAME
 
-    return {
+    out: dict[str, Any] = {
         "width": w,
         "height": h,
         "detector": "sam3-text",
@@ -323,3 +348,150 @@ def segment_image(
         "gemini_annotation_error": gemini_annotation_error,
         "items": items_out,
     }
+    if extra_response_keys:
+        out.update(extra_response_keys)
+    return out
+
+
+def run_sam_clothes_only(
+    image_bytes: bytes,
+    mime_type: str | None = None,
+    *,
+    prompts: list[str] | None = None,
+    conf: float = 0.60,
+) -> tuple[Image.Image, int, int, list[str], list[dict[str, Any]]]:
+    """
+    SAM 3 clothes segmentation only: no disk, no Gemini.
+
+    Returns (RGB PIL image, width, height, text_prompts, items with mask_png).
+    """
+    _ = mime_type
+    text_prompts: list[str] = list(prompts) if prompts else list(DEFAULT_TEXT_PROMPTS)
+    model_conf = max(float(conf), MIN_CONFIDENCE)
+
+    im = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    w, h = im.size
+    rgb = np.asarray(im, dtype=np.uint8)
+    im_bgr = rgb[:, :, ::-1].copy()
+
+    with _predictor_lock:
+        predictor = _get_predictor(conf=model_conf)
+        results = predictor(source=im_bgr, text=text_prompts)
+
+    items_out: list[dict[str, Any]] = []
+    if not results:
+        return im, w, h, text_prompts, items_out
+
+    r0 = results[0]
+    if r0.masks is None or len(r0.masks) == 0:
+        return im, w, h, text_prompts, items_out
+
+    n_m = len(r0.masks)
+    boxes = r0.boxes
+
+    for i in range(n_m):
+        mask_data = r0.masks.data[i]
+        png = _mask_tensor_to_png(mask_data, w, h)
+        if not png:
+            continue
+
+        if boxes is not None and i < len(boxes):
+            xyxy = boxes.xyxy[i].detach().cpu().numpy().ravel().tolist()
+            score = float(boxes.conf[i].detach().cpu())
+            cid = int(boxes.cls[i].detach().cpu())
+        else:
+            xyxy = [0, 0, w, h]
+            score = 1.0
+            cid = 0
+
+        try:
+            category = r0.names[cid]
+        except (KeyError, IndexError, TypeError):
+            category = text_prompts[cid] if 0 <= cid < len(text_prompts) else (text_prompts[0] if text_prompts else "object")
+
+        if score < MIN_CONFIDENCE:
+            continue
+
+        items_out.append(
+            {
+                "category": str(category),
+                "bbox": [int(round(x)) for x in xyxy[:4]],
+                "confidence": round(score, 4),
+                "mask_png": base64.b64encode(png).decode("ascii"),
+            }
+        )
+
+    return im, w, h, text_prompts, items_out
+
+
+def segment_image_for_enrolled_user(
+    user_id: str,
+    image_bytes: bytes,
+    mime_type: str | None = None,
+    *,
+    prompts: list[str] | None = None,
+    conf: float = 0.60,
+    annotate: bool = False,
+    write_segment_files: bool = True,
+) -> dict[str, Any]:
+    """
+    Face-grounded clothing segmentation: match enrolled user in image, keep only ``clothes`` masks
+    overlapping the expanded person region. Response includes ``matcher`` and ``face_grounded`` keys.
+    Raises ValueError if the user has no stored embedding (enroll first).
+    """
+    import identity_face as idf
+
+    emb = idf.load_user_embedding(user_id)
+    if emb is None:
+        raise ValueError(
+            "Enroll first: POST /api/identity/enroll with a clear face photo (JWT required).",
+        )
+
+    im, w, h, text_prompts, items = run_sam_clothes_only(
+        image_bytes,
+        mime_type=mime_type,
+        prompts=prompts,
+        conf=conf,
+    )
+    bgr = idf.image_bytes_to_bgr(image_bytes)
+    gate = idf.find_best_face_match(bgr, emb)
+    matcher = idf.matcher_to_dict(gate)
+    extra: dict[str, Any] = {"matcher": matcher, "face_grounded": True}
+
+    if not gate.matched or gate.face_bbox_xyxy is None:
+        return _finish_segment_response(
+            im,
+            [],
+            w=w,
+            h=h,
+            text_prompts=text_prompts,
+            annotate=False,
+            write_segment_files=False,
+            extra_response_keys=extra,
+            gemini_prefill=None,
+        )
+
+    pmask = idf.person_region_mask(h, w, gate.face_bbox_xyxy)
+    filtered = idf.filter_clothing_items_by_person(items, pmask, w, h)
+
+    gemini_prefill: tuple[str | None, str | None] | None = None
+    if annotate and filtered:
+        from gemini_annotator import run_clothing_annotation
+
+        gmeta = run_clothing_annotation(im, filtered)
+        gemini_prefill = (
+            gmeta.get("gemini_model"),
+            gmeta.get("gemini_annotation_error"),
+        )
+
+    return _finish_segment_response(
+        im,
+        filtered,
+        w=w,
+        h=h,
+        text_prompts=text_prompts,
+        annotate=False,
+        write_segment_files=write_segment_files,
+        extra_response_keys=extra,
+        gemini_prefill=gemini_prefill,
+    )

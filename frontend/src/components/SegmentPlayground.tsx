@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth } from "@/components/auth/AuthProvider";
 import { useEffect, useRef, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
@@ -20,6 +21,14 @@ type SegmentItem = {
   clothing?: ClothingDetail;
 };
 
+type MatcherMeta = {
+  matched: boolean;
+  score: number;
+  face_bbox: number[] | null;
+  faces_detected: number;
+  reason: string | null;
+};
+
 type SegmentResponse = {
   width: number;
   height: number;
@@ -32,6 +41,8 @@ type SegmentResponse = {
   gemini_annotation_error?: string | null;
   prompts: string[];
   items: SegmentItem[];
+  face_grounded?: boolean;
+  matcher?: MatcherMeta;
 };
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -146,10 +157,15 @@ async function drawBaseOnly(canvas: HTMLCanvasElement, imageSrc: string): Promis
 }
 
 export default function SegmentPlayground() {
+  const { user, isAuthenticated } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [conf, setConf] = useState(0.6);
   const [annotateGemini, setAnnotateGemini] = useState(false);
+  const [myClothesOnly, setMyClothesOnly] = useState(false);
+  const [enrollFile, setEnrollFile] = useState<File | null>(null);
+  const [enrollLoading, setEnrollLoading] = useState(false);
+  const [enrollMessage, setEnrollMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SegmentResponse | null>(null);
@@ -189,6 +205,10 @@ export default function SegmentPlayground() {
       setError("Choose an image first.");
       return;
     }
+    if (myClothesOnly && !isAuthenticated) {
+      setError("Sign in first (wardrobe login) to use “My clothes only”, then enroll your face below.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -198,9 +218,16 @@ export default function SegmentPlayground() {
       body.append("conf", String(conf));
       body.append("annotate", annotateGemini ? "true" : "false");
 
-      const res = await fetch(`${API_BASE}/api/segment`, {
+      const path = myClothesOnly ? "/api/segment/me" : "/api/segment";
+      const headers: HeadersInit = {};
+      if (myClothesOnly && user?.token) {
+        headers.Authorization = `Bearer ${user.token}`;
+      }
+
+      const res = await fetch(`${API_BASE}${path}`, {
         method: "POST",
         body,
+        headers,
       });
 
       if (!res.ok) {
@@ -219,6 +246,38 @@ export default function SegmentPlayground() {
     }
   }
 
+  async function onEnroll(e: React.FormEvent) {
+    e.preventDefault();
+    setEnrollMessage(null);
+    if (!isAuthenticated || !user?.token) {
+      setEnrollMessage("Sign in from the navbar (wardrobe login) before enrolling.");
+      return;
+    }
+    if (!enrollFile) {
+      setEnrollMessage("Choose a clear face photo.");
+      return;
+    }
+    setEnrollLoading(true);
+    try {
+      const body = new FormData();
+      body.append("file", enrollFile);
+      const res = await fetch(`${API_BASE}/api/identity/enroll`, {
+        method: "POST",
+        body,
+        headers: { Authorization: `Bearer ${user.token}` },
+      });
+      const detail = (await res.json().catch(() => null)) as { detail?: string } | null;
+      if (!res.ok) {
+        throw new Error(typeof detail?.detail === "string" ? detail.detail : `Enroll failed (${res.status})`);
+      }
+      setEnrollMessage("Face enrolled. You can run “My clothes only” on group photos.");
+    } catch (err) {
+      setEnrollMessage(err instanceof Error ? err.message : "Enroll failed");
+    } finally {
+      setEnrollLoading(false);
+    }
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-10">
       <header>
@@ -227,10 +286,37 @@ export default function SegmentPlayground() {
         </h1>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
           SAM 3 runs with the fixed text concept <span className="italic">clothes</span> and segments{" "}
-          <strong>all</strong> matching garment instances in the image. Requires local <code className="text-xs">sam3.pt</code>{" "}
-          (see <code className="text-xs">docs/SAM3.md</code>).
+          <strong>all</strong> matching garment instances in the image—unless you use{" "}
+          <strong>My clothes only</strong> (face enrollment + JWT). Requires local{" "}
+          <code className="text-xs">sam3.pt</code> (see <code className="text-xs">docs/SAM3.md</code>).
         </p>
       </header>
+
+      <section className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-900/50">
+        <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Face enrollment (optional)</h2>
+        <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+          Upload one clear selfie while signed in. InsightFace downloads ONNX weights on first use (
+          <code className="text-xs">backend/.insightface</code>).
+        </p>
+        <form onSubmit={onEnroll} className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+          <input
+            type="file"
+            accept="image/*"
+            className="block text-sm text-zinc-600 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white dark:text-zinc-400 dark:file:bg-zinc-200 dark:file:text-zinc-900"
+            onChange={(e) => setEnrollFile(e.target.files?.[0] ?? null)}
+          />
+          <button
+            type="submit"
+            disabled={enrollLoading || !enrollFile}
+            className="rounded-lg bg-zinc-800 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          >
+            {enrollLoading ? "Enrolling…" : "Save face embedding"}
+          </button>
+        </form>
+        {enrollMessage ? (
+          <p className="mt-2 text-xs text-zinc-700 dark:text-zinc-300">{enrollMessage}</p>
+        ) : null}
+      </section>
 
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
@@ -289,6 +375,16 @@ export default function SegmentPlayground() {
           Label each segment with Gemini (needs{" "}
           <code className="text-xs">GEMINI_API_KEY</code> on the API)
         </label>
+
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-800 dark:text-zinc-200">
+          <input
+            type="checkbox"
+            checked={myClothesOnly}
+            onChange={(e) => setMyClothesOnly(e.target.checked)}
+            className="rounded border-zinc-400 accent-zinc-900 dark:accent-zinc-100"
+          />
+          My clothes only (group photos) — uses <code className="text-xs">/api/segment/me</code> and your enrolled face
+        </label>
       </form>
 
       {error ? (
@@ -339,6 +435,18 @@ export default function SegmentPlayground() {
           {result.gemini_annotation_error ? (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
               Gemini annotation: {result.gemini_annotation_error}
+            </p>
+          ) : null}
+          {result.matcher ? (
+            <p className="rounded-lg border border-zinc-200 bg-zinc-100 px-2 py-1.5 text-xs text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200">
+              Face matcher: matched={String(result.matcher.matched)} · score {result.matcher.score} · faces detected{" "}
+              {result.matcher.faces_detected}
+              {result.matcher.reason ? ` · ${result.matcher.reason}` : ""}
+              {result.matcher.face_bbox ? (
+                <span className="block mt-0.5 font-mono text-[10px] opacity-90">
+                  bbox [{result.matcher.face_bbox.map((v) => Math.round(v)).join(", ")}]
+                </span>
+              ) : null}
             </p>
           ) : null}
           <ul className="flex flex-col gap-2">

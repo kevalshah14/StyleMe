@@ -1,12 +1,16 @@
 import os
 
 from dotenv.main import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+
+from auth import get_current_user
+from routers.auth_router import router as auth_router
 
 load_dotenv()
 
 app = FastAPI(title="StyleMe API", version="0.1.0")
+app.include_router(auth_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,6 +56,65 @@ async def segment(
         raise HTTPException(status_code=503, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=502, detail=f"Model response error: {e}") from e
+
+
+@app.post("/api/identity/enroll")
+async def identity_enroll(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """Store a face embedding for the JWT user (local InsightFace ONNX). Clear, front-facing photo recommended."""
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Expected an image file (e.g. image/jpeg, image/png).")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file.")
+
+    import identity_face as idf
+
+    try:
+        emb = idf.enroll_from_image_bytes(data)
+        idf.save_user_embedding(user["user_id"], emb)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"ok": True}
+
+
+@app.post("/api/segment/me")
+async def segment_me(
+    file: UploadFile = File(...),
+    prompts: str = Form(""),
+    conf: float = Form(0.60),
+    annotate: bool = Form(False),
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """
+    Like ``/api/segment`` but keeps only clothing masks tied to the enrolled user's face (group-photo safe).
+    Requires prior ``POST /api/identity/enroll``. Response adds ``matcher`` (match score, bbox, faces_detected).
+    When the face does not match the threshold, ``items`` is empty and ``matcher.matched`` is false.
+    """
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Expected an image file (e.g. image/jpeg, image/png).")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file.")
+
+    import segmentor
+
+    try:
+        parsed = segmentor.parse_prompts_param(prompts)
+        return segmentor.segment_image_for_enrolled_user(
+            user["user_id"],
+            data,
+            mime_type=file.content_type,
+            prompts=parsed,
+            conf=conf,
+            annotate=annotate,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
 
 
 @app.post("/api/try-on")

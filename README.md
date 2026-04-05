@@ -13,6 +13,10 @@ Segmentation uses **Meta SAM 3** via Ultralytics ([`docs/SAM3.md`](docs/SAM3.md)
 
 Copy `backend/.env.example` to `backend/.env` for paths and server options.
 
+### Face-grounded “my clothes only” segmentation
+
+The API can store a **per-user face embedding** (local InsightFace ONNX, no cloud face API) and run **`POST /api/segment/me`** so SAM 3 `clothes` masks are **filtered** to the person whose face best matches the enrolled user (useful for group photos). Flow: sign in (same JWT as the wardrobe app), **`POST /api/identity/enroll`** with a clear selfie, then **`POST /api/segment/me`** with the group image and `Authorization: Bearer <token>`. Tune **`FACE_MATCH_MIN`** and **`MASK_OVERLAP_MIN`** in `.env`. Embeddings live under `backend/data/identity/`; ONNX weights download under `backend/.insightface/` on first use. This stores **biometric-derived vectors** server-side—document retention and align with your privacy policy.
+
 ## Backend
 
 ```bash
