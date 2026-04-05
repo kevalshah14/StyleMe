@@ -1,5 +1,6 @@
 @import "tailwindcss";
-@import "tw-animate-css";
+/* Turbopack resolves bare package names from this file's folder; point at dist explicitly */
+@import "../../node_modules/tw-animate-css/dist/tw-animate.css";
 
 :root {
   --border-radius: 5px;
