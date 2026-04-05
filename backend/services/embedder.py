@@ -1,4 +1,4 @@
-"""Gemini text-embedding-004 embedding generation for garments and queries."""
+"""Gemini embedding-001 — 768-dim vectors for garments and queries."""
 
 from google import genai
 from google.genai import types
@@ -6,6 +6,9 @@ from google.genai import types
 from config import settings
 
 _client: genai.Client | None = None
+
+EMBEDDING_MODEL = "gemini-embedding-001"
+DIMENSIONS = settings.embedding_dimensions  # 768
 
 
 def _get_client() -> genai.Client:
@@ -15,31 +18,11 @@ def _get_client() -> genai.Client:
     return _client
 
 
-EMBEDDING_MODEL = "gemini-embedding-001"
-DIMENSIONS = settings.embedding_dimensions  # 768
-
-
-def build_embedding_text(garment: dict) -> str:
-    """Combine description + structured attributes for rich embedding."""
-    parts = [
-        garment.get("description", ""),
-        f"Type: {garment.get('garment_type', '')} ({garment.get('sub_type', '')}).",
-        f"Color: {garment.get('primary_color', '')}.",
-        f"Pattern: {garment.get('pattern', '')}.",
-        f"Material: {garment.get('material_estimate', '')}.",
-        f"Formality: {garment.get('formality_level', 5)}/10.",
-        f"Seasons: {', '.join(garment.get('season', []))}.",
-        f"Style: {', '.join(garment.get('style_tags', []))}.",
-        f"Good for: {', '.join(garment.get('occasion_fit', []))}.",
-        f"Pairs well with: {', '.join(garment.get('pairs_well_with', []))}.",
-    ]
-    return " ".join(parts)
-
-
 def embed_garment(garment: dict) -> list[float]:
-    """Generate 768-dim embedding for a garment using SEMANTIC_SIMILARITY task type."""
-    client = _get_client()
+    """Generate 768-dim embedding for a garment."""
+    from services.ingest import build_embedding_text
     text = build_embedding_text(garment)
+    client = _get_client()
     result = client.models.embed_content(
         model=EMBEDDING_MODEL,
         contents=text,
@@ -52,7 +35,7 @@ def embed_garment(garment: dict) -> list[float]:
 
 
 def embed_query(query: str) -> list[float]:
-    """Generate 768-dim embedding for a search/event query using RETRIEVAL_QUERY task type."""
+    """Generate 768-dim embedding for a search query."""
     client = _get_client()
     result = client.models.embed_content(
         model=EMBEDDING_MODEL,
@@ -63,18 +46,3 @@ def embed_query(query: str) -> list[float]:
         ),
     )
     return list(result.embeddings[0].values)
-
-
-def batch_embed_garments(garments: list[dict]) -> list[list[float]]:
-    """Batch embed multiple garments."""
-    client = _get_client()
-    texts = [build_embedding_text(g) for g in garments]
-    result = client.models.embed_content(
-        model=EMBEDDING_MODEL,
-        contents=texts,
-        config=types.EmbedContentConfig(
-            task_type="SEMANTIC_SIMILARITY",
-            output_dimensionality=DIMENSIONS,
-        ),
-    )
-    return [list(e.values) for e in result.embeddings]

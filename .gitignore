@@ -24,6 +24,15 @@ uv.lock
 # Local data (seeded wardrobe cache — large base64 images)
 backend/data/
 
+# Model weights (large)
+*.pt
+*.pth
+*.bin
+*.safetensors
+
+# Segment outputs
+backend/segments/
+
 # IDE
 .vscode/
 .idea/
