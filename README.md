@@ -17,17 +17,81 @@ Copy `backend/.env.example` to `backend/.env` for paths and server options.
 
 The API can store a **per-user face embedding** (local InsightFace ONNX, no cloud face API) and run **`POST /api/segment/me`** so SAM 3 `clothes` masks are **filtered** to the person whose face best matches the enrolled user (useful for group photos). Flow: sign in (same JWT as the wardrobe app), **`POST /api/identity/enroll`** with a clear selfie, then **`POST /api/segment/me`** with the group image and `Authorization: Bearer <token>`. Tune **`FACE_MATCH_MIN`** and **`MASK_OVERLAP_MIN`** in `.env`. Embeddings live under `backend/data/identity/`; ONNX weights download under `backend/.insightface/` on first use. This stores **biometric-derived vectors** server-side—document retention and align with your privacy policy.
 
-## Backend
+## Quick Start
+
+```bash
+# 1. Clone and install
+git clone https://github.com/kevalshah14/StyleMe.git
+cd StyleMe
+
+# 2. Backend setup
+cd backend
+cp .env.example .env          # then edit .env and add your GEMINI_API_KEY
+uv sync
+
+# 3. Frontend setup (new terminal)
+cd frontend
+npm install
+cp .env.local.example .env.local   # or create manually (see below)
+```
+
+### Environment files
+
+**`backend/.env`** — copy from `.env.example`, fill in at minimum:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GEMINI_API_KEY` | Yes | Google Gemini API key ([get one](https://aistudio.google.com/apikey)) |
+| `JWT_SECRET` | Yes | Random string for signing auth tokens |
+| `CORS_ORIGINS` | No | Allowed origins, default `*` |
+| `HYDRADB_API_KEY` | No | HydraDB vector DB key (optional) |
+
+**`frontend/.env.local`** — create with:
+
+```env
+BETTER_AUTH_SECRET=<random-secret>     # run: openssl rand -base64 32
+BETTER_AUTH_URL=http://localhost:3001   # match your Next.js dev port
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8001  # match your backend port
+```
+
+### Run
+
+**Terminal 1 — Backend:**
+
+```bash
+cd backend
+uv run uvicorn main:app --reload --port 8001
+```
+
+**Terminal 2 — Frontend:**
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open the URL shown by Next.js (usually `http://localhost:3000` or `3001`).
+
+### Onboarding Flow
+
+1. **Sign Up** — Create an account with email and password (Better Auth)
+2. **Name** — Enter your display name
+3. **Full-body Photo** — Upload a full-length photo (used for virtual try-on)
+4. **Selfie** — Upload a selfie (used for face enrollment via InsightFace)
+
+After onboarding, you can upload wardrobe photos, get outfit recommendations, and try on outfits virtually.
+
+## Backend (details)
 
 ```bash
 cd backend
 uv sync
-uv run python main.py
+uv run python main.py          # or: uv run uvicorn main:app --reload --port 8001
 ```
 
 Dependencies and the lockfile are managed with `uv` (`pyproject.toml`, `uv.lock`).
 
-## Frontend
+## Frontend (details)
 
 ```bash
 cd frontend
@@ -35,7 +99,7 @@ npm install   # first time, or after dependency changes
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Other scripts: `npm run build`, `npm run start`, `npm run lint`.
+Other scripts: `npm run build`, `npm run start`, `npm run lint`.
 
 ## Project layout
 
