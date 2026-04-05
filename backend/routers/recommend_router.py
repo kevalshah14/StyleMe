@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends
 
-from auth import get_current_user
+from core.auth import get_current_user
 from models.event import EventInput
 from models.outfit import AcceptOutfitRequest, OutfitRecommendation
 from services.learning import record_preference

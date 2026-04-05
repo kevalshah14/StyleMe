@@ -5,8 +5,8 @@ import logging
 from fastapi import APIRouter, Depends, Query
 from hydra_db import HydraDB
 
-from auth import get_current_user
-from config import settings
+from core.auth import get_current_user
+from core.config import settings
 
 router = APIRouter(prefix="/api/inspect", tags=["inspect"])
 log = logging.getLogger(__name__)

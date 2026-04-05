@@ -4,7 +4,7 @@ import json
 import logging
 
 from hydra_db import HydraDB
-from config import settings
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 

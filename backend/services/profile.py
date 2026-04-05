@@ -6,7 +6,7 @@ import os
 import re
 from pathlib import Path
 
-_BACKEND_ROOT = Path(__file__).resolve().parent
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
 PROFILE_ROOT = Path(
     os.environ.get("USER_PROFILE_PHOTOS_DIR", str(_BACKEND_ROOT / "data" / "user_profiles")),
 ).expanduser()

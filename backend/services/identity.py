@@ -20,7 +20,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-_BACKEND_ROOT = Path(__file__).resolve().parent
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
 MODEL_ROOT = Path(os.environ.get("INSIGHTFACE_ROOT", str(_BACKEND_ROOT / ".insightface"))).expanduser()
 IDENTITY_DIR = Path(
     os.environ.get("IDENTITY_EMBED_DIR", str(_BACKEND_ROOT / "data" / "identity")),

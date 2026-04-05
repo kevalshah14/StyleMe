@@ -250,7 +250,7 @@ def _store_hydradb(user_id: str, garment: dict, cutout_b64: str) -> bool:
     try:
         from hydra_db import HydraDB
         from hydra_db.types.memory_item import MemoryItem
-        from config import settings
+        from core.config import settings
 
         client = HydraDB(token=settings.hydradb_api_key)
         tenant = settings.hydradb_tenant_id

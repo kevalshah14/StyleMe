@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from auth import get_current_user
+from core.auth import get_current_user
 from services.learning import compute_style_dna
 from services.wardrobe import search_wardrobe
 

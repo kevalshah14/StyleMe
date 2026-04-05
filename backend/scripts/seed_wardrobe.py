@@ -29,7 +29,7 @@ from PIL import Image
 # Add backend root to path so we can import our services
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import settings  # noqa: E402
+from core.config import settings  # noqa: E402
 from services.scraper import scrape_clothing  # noqa: E402
 from services.embedder import embed_garment  # noqa: E402
 

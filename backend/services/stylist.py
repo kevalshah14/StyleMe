@@ -6,7 +6,7 @@ import uuid
 from google import genai
 from google.genai import types
 
-from config import settings
+from core.config import settings
 from models.outfit import ColorHarmony, OutfitItem, OutfitRecommendation
 
 _client: genai.Client | None = None

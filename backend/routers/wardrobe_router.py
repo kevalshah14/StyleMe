@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from auth import get_current_user
+from core.auth import get_current_user
 from models.garment import GarmentConfirmRequest
 from services.wardrobe import delete_garment, get_wardrobe_items, save_garment
 

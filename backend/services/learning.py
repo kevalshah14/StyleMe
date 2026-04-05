@@ -7,7 +7,7 @@ from collections import Counter
 from hydra_db import HydraDB
 from hydra_db.types.memory_item import MemoryItem
 
-from config import settings
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 

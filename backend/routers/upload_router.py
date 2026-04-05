@@ -5,8 +5,8 @@ import uuid
 from fastapi import APIRouter, Depends, File, UploadFile
 from PIL import Image
 
-from auth import get_current_user
-from config import settings
+from core.auth import get_current_user
+from core.config import settings
 from models.garment import GarmentUploadResponse
 from services.scraper import scrape_clothing
 

@@ -6,7 +6,7 @@ import json
 import logging
 
 from hydra_db import HydraDB
-from config import settings
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -294,6 +294,42 @@ async def get_wardrobe_items(user_id: str, search: str | None = None, limit: int
     normalized = _dedupe_matches(matches)
     normalized = await _hydrate_images_from_memory(user_id, normalized)
     return normalized[:safe_limit]
+
+
+async def match_wardrobe_embeddings(user_id: str, query: str, limit: int = 12) -> list[dict]:
+    """Embedding vector search over wardrobe items. Falls back to local cache semantic search."""
+    matches: list[dict] = []
+
+    try:
+        from services.embedder import embed_query
+        query_vec = embed_query(query)
+
+        client = _get_client()
+        results = client.embeddings.search(
+            tenant_id=settings.hydradb_tenant_id,
+            sub_tenant_id=_sub_tenant(user_id),
+            query_embedding=query_vec,
+            limit=limit,
+            request_options={"timeout_in_seconds": 10},
+        )
+        matches = [normalize_match(r.model_dump() if hasattr(r, "model_dump") else {}) for r in results]
+    except Exception as e:
+        logger.warning(f"Embedding search failed, using local fallback: {e}")
+
+    if not matches:
+        try:
+            from services.embedder import embed_query as eq
+            from services.local_cache import semantic_search
+            query_vec = eq(query)
+            matches = semantic_search(user_id, query_vec, limit=limit)
+        except Exception as e:
+            logger.warning(f"Local semantic search also failed: {e}")
+
+    if not matches:
+        from services.local_cache import search_cache
+        matches = search_cache(user_id, query, limit=limit)
+
+    return _dedupe_matches(matches)[:limit]
 
 
 async def get_style_preferences(user_id: str) -> str:

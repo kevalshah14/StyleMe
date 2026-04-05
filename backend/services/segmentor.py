@@ -27,12 +27,13 @@ from ultralytics.models.sam import SAM3SemanticPredictor
 MAX_TEXT_PROMPTS = 16
 DEFAULT_TEXT_PROMPTS: tuple[str, ...] = ("clothes",)
 
-SAM3_WEIGHTS = os.environ.get("SAM3_WEIGHTS", "sam3.pt")
+_WEIGHTS_DIR = Path(__file__).resolve().parent.parent / "weights"
+SAM3_WEIGHTS = os.environ.get("SAM3_WEIGHTS", str(_WEIGHTS_DIR / "sam3.pt"))
 SAM3_IMG_SIZE = int(os.environ.get("SAM3_IMG_SIZE", "640"))
 # Drop detections below this score (default 60%).
 MIN_CONFIDENCE = max(0.01, min(0.999, float(os.environ.get("SAM3_MIN_CONFIDENCE", "0.60"))))
 
-_BACKEND_ROOT = Path(__file__).resolve().parent
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
 # Each run writes to SEGMENTS_OUTPUT_DIR/<run_id>/*.png (RGBA cutouts). Set SAVE_SEGMENTS=0 to disable.
 SEGMENTS_OUTPUT_DIR = Path(
     os.environ.get("SEGMENTS_OUTPUT_DIR", str(_BACKEND_ROOT / "segments")),
@@ -341,7 +342,7 @@ def _finish_segment_response(
     if gemini_prefill is not None:
         gemini_model, gemini_annotation_error = gemini_prefill
     elif annotate and items_out:
-        from gemini_annotator import run_clothing_annotation
+        from services.annotator import run_clothing_annotation
 
         gmeta = run_clothing_annotation(im, items_out)
         gemini_model = gmeta.get("gemini_model")
@@ -474,7 +475,7 @@ def segment_image_for_enrolled_user(
     overlapping the expanded person region. Response includes ``matcher`` and ``face_grounded`` keys.
     Raises ValueError if the user has no stored embedding (enroll first).
     """
-    import identity_face as idf
+    from services import identity as idf
 
     emb = idf.load_user_embedding(user_id)
     if emb is None:
@@ -511,7 +512,7 @@ def segment_image_for_enrolled_user(
 
     gemini_prefill: tuple[str | None, str | None] | None = None
     if annotate and filtered:
-        from gemini_annotator import run_clothing_annotation
+        from services.annotator import run_clothing_annotation
 
         gmeta = run_clothing_annotation(im, filtered)
         gemini_prefill = (

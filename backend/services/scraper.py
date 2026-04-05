@@ -6,7 +6,7 @@ import json
 from google import genai
 from google.genai import types
 
-from config import settings
+from core.config import settings
 from models.garment import GarmentExtracted
 
 _client: genai.Client | None = None

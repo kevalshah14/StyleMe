@@ -3,7 +3,7 @@
 from google import genai
 from google.genai import types
 
-from config import settings
+from core.config import settings
 
 _client: genai.Client | None = None
 

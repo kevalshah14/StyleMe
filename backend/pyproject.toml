@@ -1,7 +1,7 @@
 [project]
-name = "backend"
+name = "styleme-backend"
 version = "0.1.0"
-description = "Add your description here"
+description = "StyleMe — AI-powered personal wardrobe stylist backend"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

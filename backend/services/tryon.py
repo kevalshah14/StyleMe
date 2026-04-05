@@ -18,7 +18,7 @@ from google import genai
 from google.genai import types
 from PIL import Image
 
-from gemini_annotator import (
+from services.annotator import (
     GEMINI_API_KEY,
     CROP_PAD_FRAC,
     _crop_patch_bytes,
@@ -98,7 +98,7 @@ def apply_outfit_to_user(
 
     Returns JSON-serializable dict including ``generated_image_png`` (base64) when successful.
     """
-    import segmentor
+    from services import segmentor
 
     seg: dict[str, Any] = segmentor.segment_image(
         outfit_image_bytes,

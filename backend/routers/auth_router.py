@@ -1,6 +1,6 @@
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from auth import create_token, generate_user_id
+from core.auth import create_token, generate_user_id
 from models.user import UserLogin, UserRegister, UserResponse
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -34,8 +34,8 @@ async def onboard(
     user_id = generate_user_id()
     token = create_token(user_id, dn)
 
-    import identity_face as idf
-    import user_profile as up
+    from services import identity as idf
+    from services import profile as up
 
     try:
         emb = idf.enroll_from_image_bytes(sf_data)
