@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+*.py[oc]
+*.egg-info
+package-lock.json
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+.next/
+out/
+build/
+dist/
+wheels/
+
+# UV lock (large, regenerated with uv sync)
+uv.lock
+
+# Local data (seeded wardrobe cache — large base64 images)
+backend/data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Testing
+coverage/
+.nyc_output/
+
+# Claude / AI
+.claude/
+CLAUDE.md
+AGENTS.md
