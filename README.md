@@ -7,6 +7,17 @@ Monorepo with a Python backend and a Next.js frontend.
 - **Backend:** Python 3.12+ and [uv](https://docs.astral.sh/uv/)
 - **Frontend:** Node.js 20+ and npm
 
+## Environment (backend)
+
+The backend uses a **Gemini API key** for Google AI. Create a local env file from the template:
+
+```bash
+cd backend
+cp .env.example .env
+```
+
+Edit `.env` and set `GEMINI_API_KEY` to your key from [Google AI Studio](https://aistudio.google.com/apikey). The real `.env` file is gitignored; only `.env.example` is committed.
+
 ## Backend
 
 ```bash
