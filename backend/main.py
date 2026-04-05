@@ -175,6 +175,110 @@ async def try_on(
         raise HTTPException(status_code=503, detail=str(e)) from e
 
 
+# Try-on from wardrobe items (no segmentation needed — items are already cutouts)
+
+
+class TryOnWardrobeRequest(BaseModel):
+    user_id: str
+    garment_ids: list[str]
+
+
+@app.post("/api/try-on/wardrobe")
+async def tryon_wardrobe(body: TryOnWardrobeRequest):
+    """
+    Virtual try-on using the user's onboarding full-body photo and pre-cut wardrobe items.
+    Sends garment cutouts directly to Gemini Image — no SAM segmentation needed.
+    The generated image uses a plain black studio background.
+    """
+    import base64
+
+    import user_profile as up
+    from services.local_cache import load_cache
+
+    photo = up.load_full_body_photo(body.user_id)
+    if not photo:
+        raise HTTPException(400, "No full-body photo found. Complete onboarding first.")
+    user_bytes, _ = photo
+
+    all_items = load_cache(body.user_id)
+    id_set = set(body.garment_ids)
+    garments = [g for g in all_items if g.get("garment_id") in id_set]
+    if not garments:
+        raise HTTPException(400, "No matching garments found in wardrobe.")
+
+    from google import genai
+    from google.genai import types
+    from PIL import Image
+
+    from gemini_annotator import GEMINI_API_KEY, _resize_long_edge
+    from outfit_tryon import GEMINI_IMAGE_MODEL, TRYON_MAX_SEGMENTS, TRYON_USER_MAX_EDGE, _extract_final_image
+
+    if not GEMINI_API_KEY:
+        raise HTTPException(503, "GEMINI_API_KEY not configured.")
+
+    user_im = Image.open(io.BytesIO(user_bytes)).convert("RGB")
+    user_im = _resize_long_edge(user_im, TRYON_USER_MAX_EDGE)
+
+    garment_pngs: list[bytes] = []
+    lines: list[str] = []
+    for i, g in enumerate(garments[:TRYON_MAX_SEGMENTS]):
+        img_b64 = g.get("image_base64", "")
+        if img_b64.startswith("data:"):
+            img_b64 = img_b64.split(",", 1)[1]
+        if not img_b64:
+            continue
+        garment_pngs.append(base64.b64decode(img_b64))
+        label = g.get("garment_type", "garment")
+        color = g.get("primary_color", "")
+        lines.append(f"- Garment {i + 1} (image {i + 2}): {color} {label}".strip())
+
+    if not garment_pngs:
+        raise HTTPException(400, "Could not load garment images.")
+
+    n = len(garment_pngs)
+    prompt = "\n".join([
+        "Virtual fashion try-on for a style app.",
+        "",
+        "Image 1 is the TARGET PERSON. Preserve their identity: face, hair, skin tone, body shape, and expression.",
+        "IMPORTANT: Replace the background with a clean, plain BLACK studio backdrop.",
+        f"Images 2–{1 + n} are {n} separate clothing pieces from the user's wardrobe (transparent background cutouts).",
+        f"Apply ALL {n} pieces on the target person. Do not skip any garment.",
+        "",
+        "Requirements:",
+        "- Photorealistic single output image.",
+        "- Plain black studio background — no props, no scenery.",
+        "- Correct layering (outerwear over shirts, pants under tops).",
+        "- Natural fit with proper wrinkles, shadows, and proportions.",
+        "",
+        "Garment list:",
+        *lines,
+    ])
+
+    contents: list = [prompt, user_im]
+    for buf in garment_pngs:
+        contents.append(types.Part.from_bytes(data=buf, mime_type="image/png"))
+
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    try:
+        response = client.models.generate_content(
+            model=GEMINI_IMAGE_MODEL,
+            contents=contents,
+            config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
+        )
+    except Exception as e:
+        raise HTTPException(503, f"Gemini image generation failed: {e}") from e
+
+    raw, mime, note = _extract_final_image(response)
+    if not raw:
+        raise HTTPException(502, "Model returned no image (safety block or empty response).")
+
+    return {
+        "generated_image": f"data:{mime or 'image/png'};base64,{base64.b64encode(raw).decode('ascii')}",
+        "garments_applied": n,
+        "model_note": note,
+    }
+
+
 # Store pre-segmented items (no re-segmentation)
 
 

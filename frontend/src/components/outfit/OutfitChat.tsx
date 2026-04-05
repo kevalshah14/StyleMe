@@ -21,6 +21,9 @@ type ChatMsg = {
   matches?: WardrobeItem[];
   totalWardrobe?: number;
   searchMethod?: string;
+  tryOnImage?: string;
+  tryOnLoading?: boolean;
+  tryOnError?: string;
 };
 
 const SUGGESTIONS = [
@@ -79,16 +82,25 @@ export function OutfitChat() {
       });
       if (res.ok) {
         const data = await res.json();
+        const matches: WardrobeItem[] = data.matches || [];
+        const msgIndex = messages.length + 1;
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
             text: data.reply,
-            matches: data.matches || [],
+            matches,
             totalWardrobe: data.total_wardrobe,
             searchMethod: String(data.search_method || ""),
+            tryOnLoading: matches.length > 0,
           },
         ]);
+        setLoading(false);
+
+        if (matches.length > 0) {
+          triggerTryOn(msgIndex, matches);
+        }
+        return;
       } else {
         const raw = await res.text();
         setMessages((prev) => [
@@ -103,6 +115,40 @@ export function OutfitChat() {
       ]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function triggerTryOn(msgIndex: number, matches: WardrobeItem[]) {
+    try {
+      const garmentIds = matches.map((m) => m.garment_id);
+      const res = await fetch(`${API_BASE}/api/try-on/wardrobe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, garment_ids: garmentIds }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessages((prev) =>
+          prev.map((m, i) =>
+            i === msgIndex ? { ...m, tryOnImage: data.generated_image, tryOnLoading: false } : m,
+          ),
+        );
+      } else {
+        const detail = (await res.json().catch(() => null)) as { detail?: string } | null;
+        setMessages((prev) =>
+          prev.map((m, i) =>
+            i === msgIndex
+              ? { ...m, tryOnLoading: false, tryOnError: detail?.detail || "Try-on failed" }
+              : m,
+          ),
+        );
+      }
+    } catch {
+      setMessages((prev) =>
+        prev.map((m, i) =>
+          i === msgIndex ? { ...m, tryOnLoading: false, tryOnError: "Could not generate try-on" } : m,
+        ),
+      );
     }
   }
 
@@ -205,6 +251,45 @@ export function OutfitChat() {
                 {/* Match cards */}
                 {msg.matches && msg.matches.length > 0 && (
                   <div className={`w-full max-w-[88%] ${msg.role === "user" ? "pr-10" : "pl-10"}`}>
+                    {/* Try-on result */}
+                    {msg.tryOnImage && (
+                      <div className="animate-scale-in mb-3 overflow-hidden rounded-xl border-2 border-neo-border shadow-[4px_4px_0_0_var(--neo-shadow)]">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={msg.tryOnImage}
+                          alt="Virtual try-on"
+                          className="w-full bg-black object-contain"
+                        />
+                        <div className="flex items-center gap-2 bg-neo-surface px-3 py-2">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-neo-accent">
+                            <path d="M6 3h12l3 6-9 13L3 9z" />
+                          </svg>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-neo-mute">
+                            Try-on preview · {msg.matches.length} piece{msg.matches.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Try-on loading */}
+                    {msg.tryOnLoading && (
+                      <div className="animate-fade-in mb-3 flex items-center gap-3 rounded-xl border-2 border-neo-border bg-neo-yellow-soft p-4 shadow-[3px_3px_0_0_var(--neo-shadow)]">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin text-neo-accent">
+                          <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                        </svg>
+                        <span className="text-xs font-bold text-neo-ink">Generating try-on preview…</span>
+                      </div>
+                    )}
+
+                    {/* Try-on error */}
+                    {msg.tryOnError && (
+                      <div className="mb-3 flex items-center gap-2 rounded-xl border-2 border-neo-border bg-neo-pink-soft p-3 text-xs font-bold text-neo-ink shadow-[2px_2px_0_0_var(--neo-shadow)]">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                        {msg.tryOnError}
+                      </div>
+                    )}
+
+                    {/* Matched garment cards */}
                     <div className="stagger-grid grid grid-cols-2 gap-2.5 sm:grid-cols-3">
                       {msg.matches.map((item) => (
                         <div key={item.garment_id} className="neo-card-interactive overflow-hidden">
@@ -229,21 +314,13 @@ export function OutfitChat() {
                               {item.garment_type}
                             </p>
                             <p className="text-[10px] font-medium text-neo-mute">{item.primary_color}</p>
-                            {item.description && (
-                              <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-neo-mute">{item.description}</p>
-                            )}
                           </div>
                         </div>
                       ))}
                     </div>
-                    {msg.totalWardrobe != null && (
-                      <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-neo-mute">
-                        {msg.matches.length} match{msg.matches.length === 1 ? "" : "es"} from {msg.totalWardrobe} items
-                        {msg.searchMethod ? (
-                          <span className="ml-2 rounded-md border border-neo-border/50 bg-neo-surface px-1.5 py-0.5 text-[9px] font-bold normal-case">{msg.searchMethod}</span>
-                        ) : null}
-                      </p>
-                    )}
+                    <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-neo-mute">
+                      {msg.matches.length} piece{msg.matches.length === 1 ? "" : "s"} from your wardrobe
+                    </p>
                   </div>
                 )}
               </div>
@@ -264,7 +341,7 @@ export function OutfitChat() {
                       <span className="h-2 w-2 animate-bounce rounded-full bg-neo-mute [animation-delay:0.15s]" />
                       <span className="h-2 w-2 animate-bounce rounded-full bg-neo-mute [animation-delay:0.3s]" />
                     </span>
-                    <span className="text-xs font-bold text-neo-ink">Searching your wardrobe…</span>
+                    <span className="text-xs font-bold text-neo-ink">Finding matching pieces…</span>
                   </div>
                 </div>
               </div>
