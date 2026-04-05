@@ -10,7 +10,7 @@ wheels/
 .venv
 .env
 
-# Downloaded model weights (e.g. sam3.pt)
+# Downloaded model weights (e.g. sam3.pt) — too large for GitHub LFS (2 GiB/file max); download separately
 *.pt
 
 # Exported segment cutouts (see SEGMENTS_OUTPUT_DIR)
