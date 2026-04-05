@@ -27,6 +27,7 @@ type SegmentResponse = {
   output?: string;
   min_confidence?: number;
   segments_dir?: string | null;
+  segment_manifest?: string | null;
   gemini_model?: string | null;
   gemini_annotation_error?: string | null;
   prompts: string[];
@@ -148,7 +149,7 @@ export default function SegmentPlayground() {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [promptText, setPromptText] = useState("");
-  const [conf, setConf] = useState(0.85);
+  const [conf, setConf] = useState(0.7);
   const [annotateGemini, setAnnotateGemini] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -272,12 +273,12 @@ export default function SegmentPlayground() {
 
         <div className="flex flex-col gap-1 sm:max-w-xs">
           <label htmlFor="conf" className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            SAM 3 score threshold: {conf.toFixed(2)} (results under 0.85 are never returned)
+            SAM 3 score threshold: {conf.toFixed(2)} (results under 0.70 are never returned)
           </label>
           <input
             id="conf"
             type="range"
-            min={0.85}
+            min={0.7}
             max={0.99}
             step={0.01}
             value={conf}
@@ -342,6 +343,12 @@ export default function SegmentPlayground() {
           {result.segments_dir ? (
             <p className="text-xs text-zinc-600 dark:text-zinc-400">
               Saved cutouts: <code className="break-all">{result.segments_dir}</code>
+              {result.segment_manifest ? (
+                <>
+                  {" "}
+                  · manifest <code className="text-xs">{result.segment_manifest}</code>
+                </>
+              ) : null}
             </p>
           ) : null}
           {result.gemini_model ? (

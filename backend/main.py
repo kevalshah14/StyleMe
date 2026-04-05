@@ -26,7 +26,7 @@ def health() -> dict[str, str]:
 async def segment(
     file: UploadFile = File(...),
     prompts: str = Form(""),
-    conf: float = Form(0.85),
+    conf: float = Form(0.70),
     annotate: bool = Form(False),
 ) -> dict:
     """Upload an image; SAM 3 text prompts (comma/newline). Empty defaults to \"clothes\". Results below min confidence are dropped (see segmentor.MIN_CONFIDENCE). Set annotate=true to label each segment with Gemini (GEMINI_API_KEY)."""

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import os
 import re
 import threading
@@ -26,8 +27,8 @@ DEFAULT_TEXT_PROMPTS: tuple[str, ...] = ("clothes",)
 
 SAM3_WEIGHTS = os.environ.get("SAM3_WEIGHTS", "sam3.pt")
 SAM3_IMG_SIZE = int(os.environ.get("SAM3_IMG_SIZE", "1024"))
-# Drop detections below this score (default 85%).
-MIN_CONFIDENCE = max(0.01, min(0.999, float(os.environ.get("SAM3_MIN_CONFIDENCE", "0.85"))))
+# Drop detections below this score (default 70%).
+MIN_CONFIDENCE = max(0.01, min(0.999, float(os.environ.get("SAM3_MIN_CONFIDENCE", "0.70"))))
 
 _BACKEND_ROOT = Path(__file__).resolve().parent
 # Each run writes to SEGMENTS_OUTPUT_DIR/<run_id>/*.png (RGBA cutouts). Set SAVE_SEGMENTS=0 to disable.
@@ -150,19 +151,64 @@ def _persist_segment_files(rgb: Image.Image, items: list[dict[str, Any]]) -> str
     return str(run_dir.resolve())
 
 
+SEGMENTS_MANIFEST_NAME = "segments.json"
+
+
+def _items_for_manifest(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Strip bulky mask_png; keep stable index ↔ PNG mapping."""
+    rows: list[dict[str, Any]] = []
+    for i, it in enumerate(items):
+        row: dict[str, Any] = {
+            "index": i,
+            "segment_file": it.get("segment_file"),
+            "category": it.get("category"),
+            "bbox": it.get("bbox"),
+            "confidence": it.get("confidence"),
+        }
+        if "clothing" in it:
+            row["clothing"] = it["clothing"]
+        rows.append(row)
+    return rows
+
+
+def _write_segments_manifest(
+    run_dir: Path,
+    *,
+    width: int,
+    height: int,
+    prompts: list[str],
+    min_confidence: float,
+    gemini_model: str | None,
+    gemini_annotation_error: str | None,
+    items: list[dict[str, Any]],
+) -> None:
+    doc: dict[str, Any] = {
+        "schema": "styleme-segments-v1",
+        "manifest": SEGMENTS_MANIFEST_NAME,
+        "image": {"width": width, "height": height},
+        "prompts": prompts,
+        "min_confidence": min_confidence,
+        "gemini_model": gemini_model,
+        "gemini_annotation_error": gemini_annotation_error,
+        "items": _items_for_manifest(items),
+    }
+    path = run_dir / SEGMENTS_MANIFEST_NAME
+    path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
 def segment_image(
     image_bytes: bytes,
     mime_type: str | None = None,
     *,
     prompts: list[str] | None = None,
-    conf: float = 0.85,
+    conf: float = 0.70,
     annotate: bool = False,
 ) -> dict[str, Any]:
     """
     Run SAM 3 text concept segmentation. Each phrase can yield multiple instances (e.g. all garments for "clothes").
 
     prompts=None → DEFAULT_TEXT_PROMPTS ("clothes",).
-    Results with confidence below MIN_CONFIDENCE (default 0.85) are omitted.
+    Results with confidence below MIN_CONFIDENCE (default 0.70) are omitted.
     annotate=True runs Gemini on segment crops (requires GEMINI_API_KEY); see gemini_annotator.py.
     """
     _ = mime_type
@@ -187,6 +233,7 @@ def segment_image(
         "min_confidence": MIN_CONFIDENCE,
         "prompts": text_prompts,
         "segments_dir": None,
+        "segment_manifest": None,
         "gemini_model": None,
         "gemini_annotation_error": None,
         "items": [],
@@ -247,6 +294,20 @@ def segment_image(
         gemini_model = gmeta.get("gemini_model")
         gemini_annotation_error = gmeta.get("gemini_annotation_error")
 
+    segment_manifest: str | None = None
+    if segments_dir:
+        _write_segments_manifest(
+            Path(segments_dir),
+            width=w,
+            height=h,
+            prompts=text_prompts,
+            min_confidence=MIN_CONFIDENCE,
+            gemini_model=gemini_model,
+            gemini_annotation_error=gemini_annotation_error,
+            items=items_out,
+        )
+        segment_manifest = SEGMENTS_MANIFEST_NAME
+
     return {
         "width": w,
         "height": h,
@@ -255,6 +316,7 @@ def segment_image(
         "min_confidence": MIN_CONFIDENCE,
         "prompts": text_prompts,
         "segments_dir": segments_dir,
+        "segment_manifest": segment_manifest,
         "gemini_model": gemini_model,
         "gemini_annotation_error": gemini_annotation_error,
         "items": items_out,
