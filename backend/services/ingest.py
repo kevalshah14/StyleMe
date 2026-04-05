@@ -1,14 +1,13 @@
 """
 Production-ready ingest pipeline.
 
-Upload → SAM 3 segment → Gemini label → Gemini embed → cluster → HydraDB + local cache.
+Upload → SAM 3 segment → Gemini label → cluster → HydraDB + local cache.
 
 Each segment becomes a wardrobe item with:
   - RGBA cutout image (cropped to bbox, transparent BG)
   - Rich Gemini labels (garment_type, color, material, body_region, occasions, details)
   - Cluster assignment (upper_body, lower_body, footwear, outerwear, accessory, full_body)
-  - 768-dim Gemini embedding for semantic retrieval
-  - Stored in HydraDB (memory + raw embedding) AND local JSON cache
+  - Stored in HydraDB (memory) AND local JSON cache
 """
 
 from __future__ import annotations
@@ -246,12 +245,11 @@ def build_embedding_text(garment: dict) -> str:
 
 # ── HydraDB storage ─────────────────────────────────────────────────
 
-def _store_hydradb(user_id: str, garment: dict, embedding: list[float]) -> bool:
-    """Store garment in HydraDB: memory + raw embedding. Returns True on success."""
+def _store_hydradb(user_id: str, garment: dict, cutout_b64: str) -> bool:
+    """Store garment in HydraDB: memory with embedded image. Returns True on success."""
     try:
         from hydra_db import HydraDB
         from hydra_db.types.memory_item import MemoryItem
-        from hydra_db.types.raw_embedding_document import RawEmbeddingDocument
         from config import settings
 
         client = HydraDB(token=settings.hydradb_api_key)
@@ -259,7 +257,6 @@ def _store_hydradb(user_id: str, garment: dict, embedding: list[float]) -> bool:
         sub_tenant = f"user_{user_id}"
         gid = garment["garment_id"]
 
-        # Memory (for hybrid recall)
         metadata_str = json.dumps({
             "garment_id": gid,
             "garment_type": garment.get("garment_type", ""),
@@ -269,35 +266,25 @@ def _store_hydradb(user_id: str, garment: dict, embedding: list[float]) -> bool:
             "pattern": garment.get("pattern", ""),
             "material_estimate": garment.get("material_estimate", ""),
             "layering_role": garment.get("layering_role", ""),
+            "image_base64": cutout_b64,
         })
+        
+        # Build text payload with the image markdown embedded for Hydra vision processing
+        garment_type = garment.get("garment_type", "clothing item")
+        primary_color = garment.get("primary_color", "")
+        description = garment.get("description", "")
+        text_content = f"![{primary_color} {garment_type}]({cutout_b64})\n\nDescription: {description}\nColor: {primary_color}\nCategory: {garment_type}"
+
         client.upload.add_memory(
             memories=[MemoryItem(
                 source_id=gid,
-                text=garment.get("description", ""),
+                text=text_content,
+                is_markdown=True,
                 infer=True,
                 tenant_metadata=metadata_str,
             )],
             tenant_id=tenant,
             sub_tenant_id=sub_tenant,
-        )
-
-        # Raw embedding (for vector search)
-        client.embeddings.insert(
-            tenant_id=tenant,
-            sub_tenant_id=sub_tenant,
-            embeddings=[RawEmbeddingDocument(
-                source_id=gid,
-                metadata={
-                    "garment_id": gid,
-                    "garment_type": garment.get("garment_type", ""),
-                    "primary_color": garment.get("primary_color", ""),
-                    "cluster": garment.get("cluster", ""),
-                    "description": garment.get("description", ""),
-                },
-                embeddings=[{"chunk_id": f"{gid}_0", "embedding": embedding}],
-            )],
-            upsert=True,
-            request_options={"timeout_in_seconds": 15},
         )
         return True
     except Exception as e:
@@ -323,7 +310,6 @@ async def ingest_segments(
 
     Returns list of saved garment dicts.
     """
-    from services.embedder import embed_garment
     from services.local_cache import save_to_cache
 
     saved: list[dict[str, Any]] = []
@@ -351,24 +337,15 @@ async def ingest_segments(
             f"conf={garment['confidence']}"
         )
 
-        # 3. Embed
-        try:
-            embedding = embed_garment(garment)
-            garment["_embedding"] = embedding  # keep for local search
-        except Exception as e:
-            logger.error(f"Segment {i}: embedding failed: {e}")
-            garment["_embedding"] = None
+        # 3. HydraDB (non-blocking — don't fail the pipeline if HydraDB is down)
+        ok = _store_hydradb(user_id, garment, cutout_b64)
+        if ok:
+            hydra_ok += 1
+        else:
+            hydra_fail += 1
 
-        # 4. HydraDB (non-blocking — don't fail the pipeline if HydraDB is down)
-        if garment["_embedding"]:
-            ok = _store_hydradb(user_id, garment, garment["_embedding"])
-            if ok:
-                hydra_ok += 1
-            else:
-                hydra_fail += 1
-
-        # 5. Local cache (always works)
-        cache_garment = {k: v for k, v in garment.items() if k != "_embedding"}
+        # 4. Local cache (always works)
+        cache_garment = {k: v for k, v in garment.items()}
         save_to_cache(user_id, cache_garment)
 
         saved.append(cache_garment)

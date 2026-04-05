@@ -479,12 +479,13 @@ class ChatRequest(BaseModel):
 @app.post("/api/chat")
 async def chat(body: ChatRequest):
     """
-    Search wardrobe by natural language. Uses:
-    1. Gemini embedding -> cosine similarity (semantic, best quality)
-    2. Keyword fallback (always works, no API needed)
+    Search wardrobe by natural language. Uses HydraDB full_recall as primary
+    (HydraDB handles embeddings + semantic + lexical internally).
+    Falls back to local cache keyword search.
     Returns matching items WITH images.
     """
-    from services.local_cache import load_cache, search_cache, semantic_search
+    import json
+    from services.local_cache import load_cache, search_cache
 
     user_id = body.user_id
     message = body.message.strip()
@@ -493,74 +494,69 @@ async def chat(body: ChatRequest):
         return {"reply": "Send a user_id and message.", "matches": [], "total_wardrobe": 0}
 
     all_items = load_cache(user_id)
-    if not all_items:
-        return {
-            "reply": "Your wardrobe is empty. Upload a photo first!",
-            "matches": [],
-            "total_wardrobe": 0,
-        }
-
     matches: list[dict] = []
 
-    # Path 1: Semantic search (embedding cosine similarity - local, fast)
+    # Path 1: HydraDB full_recall (primary — handles embedding + ranking internally)
     try:
-        from services.embedder import embed_query
+        from hydra_db import HydraDB
+        from config import settings
 
-        query_vec = embed_query(message)
-        matches = semantic_search(user_id, query_vec, limit=8)
-        logger.info(f"Semantic search: {len(matches)} matches for '{message}'")
+        client = HydraDB(token=settings.hydradb_api_key)
+        result = client.recall.full_recall(
+            query=message,
+            tenant_id=settings.hydradb_tenant_id,
+            sub_tenant_id=f"user_{user_id}",
+            mode="fast",
+            max_results=12,
+            request_options={"timeout_in_seconds": 15},
+        )
+        if result and result.chunks:
+            for chunk in result.chunks:
+                d = chunk.model_dump() if hasattr(chunk, "model_dump") else {}
+                meta = d.get("tenant_metadata", "")
+                if isinstance(meta, str):
+                    try:
+                        meta = json.loads(meta)
+                    except (json.JSONDecodeError, TypeError):
+                        meta = {}
+                if meta.get("garment_id"):
+                    matches.append({
+                        "garment_id": meta.get("garment_id", ""),
+                        "garment_type": meta.get("garment_type", ""),
+                        "primary_color": meta.get("primary_color", ""),
+                        "cluster": meta.get("cluster", ""),
+                        "body_region": meta.get("body_region", ""),
+                        "description": (d.get("text") or "")[:200],
+                        "image_base64": meta.get("image_base64", ""),
+                    })
+        logger.info(f"HydraDB recall: {len(matches)} matches for '{message}'")
     except Exception as e:
-        logger.warning(f"Semantic search failed: {e}")
+        logger.warning(f"HydraDB recall failed, using local fallback: {e}")
 
-    # Path 2: HydraDB embedding search (if semantic search returned nothing)
-    if not matches:
-        try:
-            from config import settings
-            from hydra_db import HydraDB
-            from services.embedder import embed_query as eq
-
-            client = HydraDB(token=settings.hydradb_api_key)
-            vec = eq(message)
-            results = client.embeddings.search(
-                tenant_id=settings.hydradb_tenant_id,
-                sub_tenant_id=f"user_{user_id}",
-                query_embedding=vec,
-                limit=8,
-                request_options={"timeout_in_seconds": 10},
-            )
-            if results:
-                hydra_ids = {r.source_id for r in results if hasattr(r, "source_id")}
-                matches = [i for i in all_items if i.get("garment_id") in hydra_ids]
-                logger.info(f"HydraDB search: {len(matches)} matches")
-        except ImportError:
-            pass
-        except Exception as e:
-            logger.warning(f"HydraDB search failed: {e}")
-
-    # Path 3: Keyword fallback (always works)
+    # Path 2: Local cache keyword search (fallback — always works)
     if not matches:
         matches = search_cache(user_id, message, limit=8)
-        logger.info(f"Keyword search: {len(matches)} matches for '{message}'")
+        logger.info(f"Keyword search fallback: {len(matches)} matches for '{message}'")
 
-    # Path 4: Return everything if nothing matched
+    # Path 3: Return everything if nothing matched
     if not matches:
-        matches = all_items[:8]
+        matches = all_items[:8] if all_items else []
 
-    # Build natural language reply
     top_names = ", ".join(
         f"{m.get('primary_color', '')} {m.get('garment_type', 'item')}".strip()
         for m in matches[:3]
     )
-    reply = f"Found {len(matches)} matches: {top_names}"
+    reply = f"Found {len(matches)} matches: {top_names}" if matches else "No matches found."
     if len(matches) > 3:
         reply += f" and {len(matches) - 3} more"
-    reply += "."
+    if matches:
+        reply += "."
 
     return {
         "reply": reply,
         "matches": matches,
         "total_wardrobe": len(all_items),
-        "search_method": "semantic" if any(m.get("score") for m in matches) else "keyword",
+        "search_method": "hydradb" if any(m.get("image_base64") for m in matches) else "keyword",
     }
 
 
