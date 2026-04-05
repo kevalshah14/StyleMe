@@ -11,7 +11,7 @@ import type {
   WardrobeMatchResponse,
 } from "./types";
 
-const BASE = "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
@@ -36,6 +36,38 @@ export async function register(displayName: string): Promise<User> {
     method: "POST",
     body: JSON.stringify({ display_name: displayName }),
   });
+}
+
+/** Name + full-body reference + selfie (face enrollment). Returns JWT user. */
+export async function onboard(
+  displayName: string,
+  fullBody: File,
+  selfie: File,
+): Promise<User> {
+  const form = new FormData();
+  form.append("display_name", displayName.trim());
+  form.append("full_body", fullBody);
+  form.append("selfie", selfie);
+
+  const res = await fetch(`${BASE}/api/auth/onboard`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const raw = await res.text();
+    let msg = raw;
+    try {
+      const j = JSON.parse(raw) as { detail?: unknown };
+      if (typeof j.detail === "string") msg = j.detail;
+      else if (Array.isArray(j.detail) && j.detail[0] && typeof (j.detail[0] as { msg?: string }).msg === "string") {
+        msg = (j.detail[0] as { msg: string }).msg;
+      }
+    } catch {
+      /* use raw */
+    }
+    throw new Error(msg.length > 200 ? `${msg.slice(0, 200)}…` : msg);
+  }
+  return res.json() as Promise<User>;
 }
 
 export async function login(userId: string): Promise<User> {

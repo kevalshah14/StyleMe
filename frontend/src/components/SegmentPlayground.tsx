@@ -1,8 +1,12 @@
 "use client";
 
+import { useAuth } from "@/components/auth/AuthProvider";
 import { useEffect, useRef, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+
+const neoFileInput =
+  "block w-full text-sm text-neo-mute file:mr-4 file:cursor-pointer file:border-[3px] file:border-neo-ink file:bg-neo-yellow file:px-4 file:py-2 file:text-sm file:font-bold file:text-neo-ink file:shadow-[4px_4px_0_0_var(--neo-ink)] file:transition-transform hover:file:translate-x-0.5 hover:file:translate-y-0.5 hover:file:shadow-[2px_2px_0_0_var(--neo-ink)]";
 
 type ClothingDetail = {
   garment_type: string;
@@ -177,6 +181,8 @@ async function drawBaseOnly(canvas: HTMLCanvasElement, imageSrc: string): Promis
 // ─── Main Component ────────────────────────────────────────────────
 
 export default function SegmentPlayground() {
+  const { user, signOut } = useAuth();
+
   // Segment state
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -187,12 +193,6 @@ export default function SegmentPlayground() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SegmentResponse | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  // Face enrollment state
-  const [enrollFile, setEnrollFile] = useState<File | null>(null);
-  const [enrollLoading, setEnrollLoading] = useState(false);
-  const [enrollMessage, setEnrollMessage] = useState<string | null>(null);
-  const [authToken, setAuthToken] = useState("");
 
   // Ingest state
   const [userId, setUserId] = useState("");
@@ -230,19 +230,12 @@ export default function SegmentPlayground() {
     })();
   }, [previewUrl, result]);
 
-  // SSR-safe: load userId + authToken after mount
   useEffect(() => {
-    const stored = localStorage.getItem("styleme_user_id");
-    if (stored) {
-      setUserId(stored);
-    } else {
-      const id = crypto.randomUUID();
-      localStorage.setItem("styleme_user_id", id);
-      setUserId(id);
+    if (user?.user_id) {
+      setUserId(user.user_id);
+      localStorage.setItem("styleme_user_id", user.user_id);
     }
-    const tok = localStorage.getItem("styleme_token");
-    if (tok) setAuthToken(tok);
-  }, []);
+  }, [user?.user_id]);
 
   // Load wardrobe when tab switches
   useEffect(() => {
@@ -256,8 +249,8 @@ export default function SegmentPlayground() {
     setResult(null);
     setIngestResult(null);
     if (!file) { setError("Choose an image first."); return; }
-    if (myClothesOnly && !authToken) {
-      setError("Sign in first (POST /api/auth/register or /login) so the API can match your enrolled face.");
+    if (myClothesOnly && !user?.token) {
+      setError("You need to be signed in to use group-photo face matching.");
       return;
     }
 
@@ -271,8 +264,8 @@ export default function SegmentPlayground() {
 
       const endpoint = myClothesOnly ? "/api/segment/me" : "/api/segment";
       const headers: HeadersInit = {};
-      if (myClothesOnly && authToken) {
-        headers.Authorization = `Bearer ${authToken}`;
+      if (myClothesOnly && user?.token) {
+        headers.Authorization = `Bearer ${user.token}`;
       }
 
       const res = await fetch(`${API_BASE}${endpoint}`, { method: "POST", body, headers });
@@ -285,38 +278,6 @@ export default function SegmentPlayground() {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function onEnroll(e: React.FormEvent) {
-    e.preventDefault();
-    setEnrollMessage(null);
-    if (!authToken) {
-      setEnrollMessage("No auth token found. Register or log in first (POST /api/auth/register, then store the JWT).");
-      return;
-    }
-    if (!enrollFile) {
-      setEnrollMessage("Choose a clear face photo.");
-      return;
-    }
-    setEnrollLoading(true);
-    try {
-      const body = new FormData();
-      body.append("file", enrollFile);
-      const res = await fetch(`${API_BASE}/api/identity/enroll`, {
-        method: "POST",
-        body,
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-      const detail = (await res.json().catch(() => null)) as { detail?: string; ok?: boolean } | null;
-      if (!res.ok) {
-        throw new Error(typeof detail?.detail === "string" ? detail.detail : `Enroll failed (${res.status})`);
-      }
-      setEnrollMessage("Face enrolled! You can now use \"My clothes only\" on group photos.");
-    } catch (err) {
-      setEnrollMessage(err instanceof Error ? err.message : "Enroll failed");
-    } finally {
-      setEnrollLoading(false);
     }
   }
 
@@ -382,29 +343,44 @@ export default function SegmentPlayground() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8">
-      {/* Header */}
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          StyleMe
-        </h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Upload a photo → SAM 3 segments clothing → Gemini labels → saved to HydraDB → chat to find outfits
-        </p>
-        <p className="mt-1 text-xs text-zinc-400">
-          User: <code className="bg-zinc-100 dark:bg-zinc-800 px-1 rounded">{userId ? `${userId.slice(0, 12)}…` : "…"}</code>
-        </p>
+      <header className="neo-card flex flex-wrap items-start justify-between gap-4 rounded-sm p-5">
+        <div>
+          <p className="inline-block border-[2px] border-neo-ink bg-neo-lime px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-neo-ink">
+            StyleMe
+          </p>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-neo-ink">Closet lab</h1>
+          <p className="mt-2 max-w-xl text-sm font-medium leading-relaxed text-neo-mute">
+            Photo in → SAM 3 → Gemini labels → HydraDB → wardrobe + chat.
+          </p>
+          <p className="mt-2 text-xs font-bold text-neo-mute">
+            User{" "}
+            <code className="neo-code rounded-sm px-1.5 py-0.5 text-[11px] text-neo-ink">
+              {userId ? `${userId.slice(0, 12)}…` : "…"}
+            </code>
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-2 text-right">
+          <span className="text-xs font-bold text-neo-mute">
+            Hi, <span className="text-neo-ink">{user?.display_name ?? ""}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => signOut()}
+            className="neo-btn neo-btn-ghost rounded-sm px-3 py-1.5 text-xs font-bold"
+          >
+            Sign out
+          </button>
+        </div>
       </header>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg w-fit">
+      <div className="neo-tab-wrap flex w-fit flex-wrap gap-2 rounded-sm p-2">
         {tabs.map((t) => (
           <button
             key={t.id}
+            type="button"
             onClick={() => setTab(t.id)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${
-              tab === t.id
-                ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100"
-                : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+            className={`neo-tab rounded-sm px-4 py-2 text-sm ${
+              tab === t.id ? "neo-tab-active" : "text-neo-mute hover:bg-neo-surface hover:text-neo-ink"
             }`}
           >
             {t.label}
@@ -415,97 +391,85 @@ export default function SegmentPlayground() {
       {/* ── Segment Tab ───────────────────────────────────── */}
       {tab === "segment" && (
         <>
-          {/* Face enrollment (optional) */}
-          <section className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-900/50">
-            <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Face enrollment (optional — for group photos)</h2>
-            <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-              Upload a clear selfie while signed in. Your face embedding is stored server-side so
-              &ldquo;My clothes only&rdquo; can filter group shots. First run downloads InsightFace ONNX weights (~200 MB).
-            </p>
-            <form onSubmit={onEnroll} className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-              <input
-                type="file"
-                accept="image/*"
-                className="block text-sm text-zinc-600 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white dark:text-zinc-400 dark:file:bg-zinc-200 dark:file:text-zinc-900"
-                onChange={(e) => setEnrollFile(e.target.files?.[0] ?? null)}
-              />
-              <button
-                type="submit"
-                disabled={enrollLoading || !enrollFile}
-                className="rounded-lg bg-zinc-800 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900 dark:hover:bg-zinc-300"
-              >
-                {enrollLoading ? "Enrolling…" : "Save face embedding"}
-              </button>
-            </form>
-            {enrollMessage ? (
-              <p className="mt-2 text-xs text-zinc-700 dark:text-zinc-300">{enrollMessage}</p>
-            ) : null}
-          </section>
+          <p className="neo-card-sm rounded-sm p-4 text-xs font-bold leading-relaxed text-neo-mute">
+            Selfie enrolled at setup → <span className="text-neo-ink">&ldquo;My clothes only&rdquo;</span> on group shots.
+            Full-length reference is on the server.
+          </p>
 
-          <form onSubmit={onSegment} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Image</label>
+          <form onSubmit={onSegment} className="neo-card-sm flex flex-col gap-4 rounded-sm p-5">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-bold text-neo-ink">Image</label>
               <input
                 type="file"
                 accept="image/*"
-                className="block w-full text-sm text-zinc-600 file:mr-4 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-zinc-800 dark:text-zinc-400 dark:file:bg-zinc-100 dark:file:text-zinc-900"
+                className={neoFileInput}
                 onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); setIngestResult(null); setError(null); }}
               />
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-zinc-800 dark:text-zinc-200">What to find</label>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-bold text-neo-ink">What to find</label>
               <textarea
                 rows={2}
                 placeholder="clothes — or jacket, pants, shoes"
-                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                className="neo-input rounded-sm px-3 py-2 text-sm placeholder:text-neo-mute/60"
                 value={promptText}
                 onChange={(e) => setPromptText(e.target.value)}
               />
             </div>
 
-            <div className="flex flex-col gap-1 sm:max-w-xs">
-              <label className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-                Confidence: {conf.toFixed(2)}
-              </label>
-              <input type="range" min={0.7} max={0.99} step={0.01} value={conf} onChange={(e) => setConf(Number(e.target.value))} className="accent-zinc-900 dark:accent-zinc-100" />
+            <div className="flex max-w-xs flex-col gap-2">
+              <label className="text-sm font-bold text-neo-ink">Confidence: {conf.toFixed(2)}</label>
+              <input
+                type="range"
+                min={0.7}
+                max={0.99}
+                step={0.01}
+                value={conf}
+                onChange={(e) => setConf(Number(e.target.value))}
+                className="h-3 w-full cursor-pointer accent-neo-accent"
+              />
             </div>
 
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-800 dark:text-zinc-200">
+            <label className="flex cursor-pointer items-center gap-3 text-sm font-bold text-neo-ink">
               <input
                 type="checkbox"
                 checked={myClothesOnly}
                 onChange={(e) => setMyClothesOnly(e.target.checked)}
-                className="rounded border-zinc-400 accent-zinc-900 dark:accent-zinc-100"
+                className="h-4 w-4 rounded-sm border-[3px] border-neo-ink accent-neo-accent"
               />
-              My clothes only (group photos) — uses <code className="text-xs">/api/segment/me</code> + enrolled face
+              My clothes only — <code className="neo-code rounded-sm px-1 text-[11px]">/api/segment/me</code>
             </label>
 
             <button
               type="submit"
               disabled={loading || !file}
-              className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+              className="neo-btn neo-btn-pink rounded-sm px-4 py-3 text-sm font-bold disabled:cursor-not-allowed"
             >
-              {loading ? "Segmenting with SAM 3 + Gemini..." : "Segment & Label"}
+              {loading ? "Segmenting with SAM 3 + Gemini..." : "Segment & label"}
             </button>
           </form>
 
           {error && (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{error}</p>
+            <p className="border-[3px] border-neo-ink bg-neo-yellow/50 px-3 py-2 text-sm font-bold text-neo-ink shadow-[3px_3px_0_0_var(--neo-ink)]">
+              {error}
+            </p>
           )}
 
           {previewUrl && (
             <div className="flex flex-col gap-2">
-              <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              <h2 className="text-sm font-bold text-neo-ink">
                 {result?.items.length ? `Detected ${result.items.length} clothing segments` : "Preview"}
               </h2>
-              <canvas ref={canvasRef} className="max-h-[60vh] w-full rounded-lg border border-zinc-200 object-contain dark:border-zinc-700" />
+              <canvas
+                ref={canvasRef}
+                className="max-h-[60vh] w-full border-[3px] border-neo-ink bg-neo-surface object-contain shadow-[6px_6px_0_0_var(--neo-ink)]"
+              />
             </div>
           )}
 
-          {/* Matcher info (face-grounded mode) */}
           {result?.matcher && (
-            <p className="rounded-lg border border-zinc-200 bg-zinc-100 px-2 py-1.5 text-xs text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200">
+            <p className="border-[3px] border-neo-ink bg-neo-cyan/30 px-3 py-2 text-xs font-bold text-neo-ink shadow-[3px_3px_0_0_var(--neo-ink)]">
               Face matcher: matched={String(result.matcher.matched)} · score {result.matcher.score} · faces {result.matcher.faces_detected}
               {result.matcher.reason ? ` · ${result.matcher.reason}` : ""}
               {result.matcher.face_bbox ? (
@@ -518,32 +482,32 @@ export default function SegmentPlayground() {
 
           {/* Segment results + Save button */}
           {result && result.items.length > 0 && (
-            <section className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-medium">{result.items.length} clothing items found</h2>
+            <section className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-sm font-bold text-neo-ink">{result.items.length} clothing items found</h2>
                 <button
+                  type="button"
                   onClick={onSaveToWardrobe}
                   disabled={ingesting || !!ingestResult}
-                  className={`rounded-full px-5 py-2 text-sm font-medium transition ${
+                  className={
                     ingestResult
-                      ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                      : "bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-                  }`}
+                      ? "neo-btn neo-btn-lime rounded-sm px-5 py-2 text-sm font-bold"
+                      : "neo-btn neo-btn-cyan rounded-sm px-5 py-2 text-sm font-bold disabled:cursor-not-allowed"}
                 >
                   {ingesting
                     ? "Embedding & saving to HydraDB..."
                     : ingestResult
                     ? `Saved ${ingestResult.items_saved} items!`
-                    : "Save to Wardrobe (HydraDB)"}
+                    : "Save to wardrobe (HydraDB)"}
                 </button>
               </div>
 
               {ingestResult && (
-                <div className="rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950 p-3 text-sm">
-                  <p className="font-medium text-green-800 dark:text-green-200">{ingestResult.message}</p>
-                  <ul className="mt-2 space-y-1">
+                <div className="neo-card-sm rounded-sm border-neo-ink bg-neo-lime/40 p-4 text-sm font-bold text-neo-ink">
+                  <p>{ingestResult.message}</p>
+                  <ul className="mt-2 space-y-1 text-xs font-medium">
                     {ingestResult.items.map((it) => (
-                      <li key={it.garment_id} className="text-xs text-green-700 dark:text-green-300">
+                      <li key={it.garment_id}>
                         {it.garment_type} ({it.primary_color}) — {it.description.slice(0, 60)}...
                       </li>
                     ))}
@@ -551,17 +515,19 @@ export default function SegmentPlayground() {
                 </div>
               )}
 
-              <ul className="flex flex-col gap-2">
+              <ul className="flex flex-col gap-3">
                 {result.items.map((item, i) => (
-                  <li key={`${i}-${item.bbox.join(",")}`} className="flex flex-col gap-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium capitalize">{item.clothing?.short_label ?? item.category}</span>
-                      <span className="text-zinc-500">score {item.confidence}</span>
+                  <li
+                    key={`${i}-${item.bbox.join(",")}`}
+                    className="neo-card-sm flex flex-col gap-1 rounded-sm px-3 py-3 text-sm">
+                  <div className="flex items-center justify-between">
+                      <span className="font-bold capitalize text-neo-ink">{item.clothing?.short_label ?? item.category}</span>
+                      <span className="text-xs font-bold text-neo-mute">score {item.confidence}</span>
                     </div>
                     {item.clothing && (
-                      <div className="text-xs text-zinc-600 dark:text-zinc-300">
+                      <div className="text-xs font-medium text-neo-mute">
                         {item.clothing.garment_type} — {item.clothing.body_region}
-                        {item.clothing.notable_details && <span className="block text-zinc-400">{item.clothing.notable_details}</span>}
+                        {item.clothing.notable_details && <span className="mt-1 block text-neo-ink">{item.clothing.notable_details}</span>}
                       </div>
                     )}
                   </li>
@@ -575,24 +541,30 @@ export default function SegmentPlayground() {
       {/* ── Wardrobe Tab ──────────────────────────────────── */}
       {tab === "wardrobe" && (
         <section className="flex flex-col gap-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <h2 className="text-lg font-semibold">Your Wardrobe ({wardrobe.length} items)</h2>
-            <div className="flex gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-bold text-neo-ink">Your wardrobe ({wardrobe.length} items)</h2>
+            <div className="flex flex-wrap gap-2">
               <button
+                type="button"
                 onClick={() => setViewMode(viewMode === "grid" ? "clusters" : "grid")}
-                className="text-xs px-3 py-1 rounded-full border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="neo-btn neo-btn-ghost rounded-sm px-3 py-1.5 text-xs font-bold"
               >
-                {viewMode === "grid" ? "Show Clusters" : "Show Grid"}
+                {viewMode === "grid" ? "Show clusters" : "Show grid"}
               </button>
-              <button onClick={loadWardrobe} disabled={wardrobeLoading} className="text-sm text-blue-600 hover:underline disabled:opacity-50">
+              <button
+                type="button"
+                onClick={loadWardrobe}
+                disabled={wardrobeLoading}
+                className="neo-btn neo-btn-yellow rounded-sm px-3 py-1.5 text-xs font-bold disabled:cursor-not-allowed"
+              >
                 {wardrobeLoading ? "Loading..." : "Refresh"}
               </button>
             </div>
           </div>
 
           {wardrobe.length === 0 && !wardrobeLoading && (
-            <p className="text-sm text-zinc-500 py-8 text-center">
-              No items yet. Upload a photo in the Segment tab and save to wardrobe.
+            <p className="neo-card-sm rounded-sm py-10 text-center text-sm font-bold text-neo-mute">
+              No items yet. Segment something, then save to wardrobe.
             </p>
           )}
 
@@ -604,7 +576,7 @@ export default function SegmentPlayground() {
             });
             return Object.entries(clusters).map(([cid, items]) => (
               <div key={cid} className="flex flex-col gap-2">
-                <h3 className="text-sm font-semibold capitalize text-zinc-700 dark:text-zinc-300 border-b border-zinc-200 dark:border-zinc-700 pb-1">
+                <h3 className="border-b-[3px] border-neo-ink pb-2 text-sm font-bold capitalize text-neo-ink">
                   {(items[0] as Record<string, unknown>).cluster_label as string || cid} ({items.length})
                 </h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -625,62 +597,72 @@ export default function SegmentPlayground() {
       {/* ── Chat Tab ──────────────────────────────────────── */}
       {tab === "chat" && (
         <section className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold">Ask Your Wardrobe</h2>
-          <p className="text-sm text-zinc-500">
-            Describe what you need and see matching items from your wardrobe with images.
+          <h2 className="text-lg font-bold text-neo-ink">Ask your wardrobe</h2>
+          <p className="text-sm font-medium text-neo-mute">
+            Describe what you need — matching items show up with images.
           </p>
 
-          <form onSubmit={onChat} className="flex gap-2">
+          <form onSubmit={onChat} className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
             <input
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              placeholder="e.g. blue shirt for dinner, warm jacket, formal pants..."
-              className="flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+              placeholder="e.g. blue shirt for dinner, warm jacket..."
+              className="neo-input min-h-[44px] flex-1 rounded-sm px-3 py-2 text-sm placeholder:text-neo-mute/60"
             />
             <button
               type="submit"
               disabled={chatLoading || !chatInput.trim()}
-              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+              className="neo-btn neo-btn-pink rounded-sm px-5 py-2 text-sm font-bold disabled:cursor-not-allowed sm:min-w-[120px]"
             >
-              {chatLoading ? "Searching..." : "Search"}
+              {chatLoading ? "Searching…" : "Search"}
             </button>
           </form>
 
           {chatResponse && (
             <div className="flex flex-col gap-3">
-              <p className="text-sm text-zinc-700 dark:text-zinc-300">{chatResponse.reply}</p>
-              <p className="text-xs text-zinc-400">
-                {chatResponse.matches.length} matches from {chatResponse.total_wardrobe} total items
+              <p className="text-sm font-medium leading-relaxed text-neo-ink">{chatResponse.reply}</p>
+              <p className="text-xs font-bold text-neo-mute">
+                {chatResponse.matches.length} matches from {chatResponse.total_wardrobe} total
                 {String((chatResponse as Record<string, unknown>).search_method || "") !== "" && (
-                  <span className="ml-2 px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-[10px]">
+                  <span className="neo-tag ml-2 inline-block rounded-sm px-2 py-0.5 text-[10px] text-neo-ink">
                     {String((chatResponse as Record<string, unknown>).search_method)}
                   </span>
                 )}
               </p>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {chatResponse.matches.map((item) => (
-                  <div key={item.garment_id} className="rounded-xl border border-blue-200 dark:border-blue-800 overflow-hidden bg-white dark:bg-zinc-900 relative">
+                  <div
+                    key={item.garment_id}
+                    className="neo-card-sm relative overflow-hidden rounded-sm bg-neo-surface">
                     {item.image_base64 ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.image_base64} alt={item.garment_type} className="w-full aspect-square object-contain bg-zinc-100 dark:bg-zinc-800" />
+                      <img
+                        src={item.image_base64}
+                        alt={item.garment_type}
+                        className="aspect-square w-full bg-neo-bg object-contain"
+                      />
                     ) : (
-                      <div className="w-full aspect-square bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-xs">No image</div>
+                      <div className="flex aspect-square w-full items-center justify-center bg-neo-bg text-xs font-bold text-neo-mute">
+                        No image
+                      </div>
                     )}
                     {(item as Record<string, unknown>).score != null && (
-                      <span className="absolute top-1 right-1 px-1.5 py-0.5 bg-blue-600 text-white text-[10px] rounded-full font-medium">
+                      <span className="absolute right-1 top-1 border-[2px] border-neo-ink bg-neo-yellow px-1.5 py-0.5 text-[10px] font-bold text-neo-ink shadow-[2px_2px_0_0_var(--neo-ink)]">
                         {((item as Record<string, unknown>).score as number).toFixed(2)}
                       </span>
                     )}
                     <div className="p-2">
-                      <p className="font-medium text-sm capitalize truncate">{item.garment_type}</p>
-                      <p className="text-xs text-zinc-500">{item.primary_color}</p>
+                      <p className="truncate text-sm font-bold capitalize text-neo-ink">{item.garment_type}</p>
+                      <p className="text-xs font-medium text-neo-mute">{item.primary_color}</p>
                       {String((item as Record<string, unknown>).cluster_label || "") !== "" && (
-                        <span className="text-[10px] px-1.5 py-0.5 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500 mt-0.5 inline-block">
+                        <span className="mt-1 inline-block rounded-sm border-[2px] border-neo-ink bg-neo-surface px-1.5 py-0.5 text-[10px] font-bold text-neo-mute">
                           {String((item as Record<string, unknown>).cluster_label)}
                         </span>
                       )}
-                      {item.description && <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{item.description}</p>}
+                      {item.description && (
+                        <p className="mt-1 line-clamp-2 text-xs font-medium text-neo-mute">{item.description}</p>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -689,12 +671,13 @@ export default function SegmentPlayground() {
           )}
 
           {!chatResponse && !chatLoading && (
-            <div className="flex flex-wrap gap-2 mt-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               {["blue shirt", "formal outfit", "warm jacket", "casual pants", "summer clothes"].map((q) => (
                 <button
                   key={q}
-                  onClick={() => { setChatInput(q); }}
-                  className="px-3 py-1.5 rounded-full border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                  type="button"
+                  onClick={() => setChatInput(q)}
+                  className="neo-tag rounded-sm px-3 py-1.5 text-xs font-bold text-neo-ink neo-press"
                 >
                   {q}
                 </button>
@@ -710,24 +693,28 @@ export default function SegmentPlayground() {
 
 function WardrobeCard({ item }: { item: WardrobeItem }) {
   return (
-    <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-white dark:bg-zinc-900">
+    <div className="neo-card-sm overflow-hidden rounded-sm bg-neo-surface">
       {item.image_base64 ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={item.image_base64} alt={item.garment_type} className="w-full aspect-square object-contain bg-zinc-100 dark:bg-zinc-800" />
+        <img src={item.image_base64} alt={item.garment_type} className="aspect-square w-full bg-neo-bg object-contain" />
       ) : (
-        <div className="w-full aspect-square bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-xs">No image</div>
+        <div className="flex aspect-square w-full items-center justify-center bg-neo-bg text-xs font-bold text-neo-mute">
+          No image
+        </div>
       )}
       <div className="p-2">
-        <p className="font-medium text-sm capitalize truncate">{item.garment_type}</p>
-        <div className="flex items-center gap-1.5 mt-0.5">
-          {item.primary_color && <span className="text-xs text-zinc-500">{item.primary_color}</span>}
+        <p className="truncate text-sm font-bold capitalize text-neo-ink">{item.garment_type}</p>
+        <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+          {item.primary_color && <span className="text-xs font-medium text-neo-mute">{item.primary_color}</span>}
           {String((item as Record<string, unknown>).cluster_label || "") !== "" && (
-            <span className="text-[10px] px-1.5 py-0.5 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-400">
+            <span className="rounded-sm border-[2px] border-neo-ink px-1.5 py-0.5 text-[10px] font-bold text-neo-mute">
               {String((item as Record<string, unknown>).cluster_label)}
             </span>
           )}
         </div>
-        {item.description && <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{item.description}</p>}
+        {item.description && (
+          <p className="mt-1 line-clamp-2 text-xs font-medium text-neo-mute">{item.description}</p>
+        )}
       </div>
     </div>
   );

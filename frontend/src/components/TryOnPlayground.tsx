@@ -4,6 +4,9 @@ import { useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
+const fileClass =
+  "block w-full text-sm text-neo-mute file:mr-4 file:cursor-pointer file:border-[3px] file:border-neo-ink file:bg-neo-cyan file:px-4 file:py-2 file:text-sm file:font-bold file:text-neo-ink file:shadow-[4px_4px_0_0_var(--neo-ink)] file:transition-transform hover:file:translate-x-0.5 hover:file:translate-y-0.5 hover:file:shadow-[2px_2px_0_0_var(--neo-ink)]";
+
 type OutfitItem = {
   index: number;
   category: string;
@@ -96,22 +99,26 @@ export default function TryOnPlayground() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-10">
-      <header>
-        <h2 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          Virtual try-on (SAM 3 + Nano Banana 2)
+      <header className="neo-card-sm rounded-sm p-5">
+        <p className="inline-block border-[2px] border-neo-ink bg-neo-lime px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-neo-ink">
+          Try-on
+        </p>
+        <h2 className="mt-3 text-2xl font-bold tracking-tight text-neo-ink">
+          Virtual try-on (SAM 3 + image model)
         </h2>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Upload a <strong>user</strong> photo and an <strong>outfit</strong> photo. The outfit is always segmented with
-          the text concept <span className="italic">clothes</span> (all garment instances). Each segment is sent to the image
-          model (up to 14 by default), ordered head-to-toe. Requires <code className="text-xs">GEMINI_API_KEY</code> and local{" "}
-          <code className="text-xs">sam3.pt</code>.
+        <p className="mt-2 text-sm font-medium leading-relaxed text-neo-mute">
+          Upload a <strong className="text-neo-ink">user</strong> photo and an{" "}
+          <strong className="text-neo-ink">outfit</strong> photo. Outfit is segmented on{" "}
+          <span className="italic text-neo-ink">clothes</span> (all instances). Needs{" "}
+          <code className="neo-code rounded-sm px-1 py-0.5 text-[11px]">GEMINI_API_KEY</code> and local{" "}
+          <code className="neo-code rounded-sm px-1 py-0.5 text-[11px]">sam3.pt</code>.
         </p>
       </header>
 
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="tryon-user" className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+      <form onSubmit={onSubmit} className="neo-card-sm flex flex-col gap-5 rounded-sm p-5">
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <label htmlFor="tryon-user" className="text-sm font-bold text-neo-ink">
               User photo
             </label>
             <input
@@ -119,12 +126,12 @@ export default function TryOnPlayground() {
               name="user"
               type="file"
               accept="image/*"
-              className="block w-full text-sm text-zinc-600 file:mr-4 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-zinc-800 dark:text-zinc-400 dark:file:bg-zinc-100 dark:file:text-zinc-900"
+              className={fileClass}
               onChange={(e) => setUserFile(e.target.files?.[0] ?? null)}
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="tryon-outfit" className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+          <div className="flex flex-col gap-2">
+            <label htmlFor="tryon-outfit" className="text-sm font-bold text-neo-ink">
               Outfit photo
             </label>
             <input
@@ -132,14 +139,14 @@ export default function TryOnPlayground() {
               name="outfit"
               type="file"
               accept="image/*"
-              className="block w-full text-sm text-zinc-600 file:mr-4 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-zinc-800 dark:text-zinc-400 dark:file:bg-zinc-100 dark:file:text-zinc-900"
+              className={fileClass}
               onChange={(e) => setOutfitFile(e.target.files?.[0] ?? null)}
             />
           </div>
         </div>
 
-        <div className="flex flex-col gap-1 sm:max-w-xs">
-          <label htmlFor="tryon-conf" className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+        <div className="flex max-w-md flex-col gap-2">
+          <label htmlFor="tryon-conf" className="text-sm font-bold text-neo-ink">
             SAM 3 threshold: {conf.toFixed(2)}
           </label>
           <input
@@ -150,16 +157,16 @@ export default function TryOnPlayground() {
             step={0.01}
             value={conf}
             onChange={(e) => setConf(Number(e.target.value))}
-            className="w-full accent-zinc-900 dark:accent-zinc-100"
+            className="h-3 w-full cursor-pointer accent-neo-accent"
           />
         </div>
 
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-800 dark:text-zinc-200">
+        <label className="flex cursor-pointer items-center gap-3 text-sm font-bold text-neo-ink">
           <input
             type="checkbox"
             checked={annotate}
             onChange={(e) => setAnnotate(e.target.checked)}
-            className="rounded border-zinc-400 accent-zinc-900 dark:accent-zinc-100"
+            className="h-4 w-4 rounded-sm border-[3px] border-neo-ink accent-neo-accent"
           />
           Label garments (Flash-Lite) to improve the try-on prompt
         </label>
@@ -167,14 +174,14 @@ export default function TryOnPlayground() {
         <button
           type="submit"
           disabled={loading || !userFile || !outfitFile}
-          className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="neo-btn neo-btn-yellow rounded-sm px-4 py-3 text-sm font-bold disabled:cursor-not-allowed"
         >
           {loading ? "Segmenting + generating…" : "Run try-on"}
         </button>
       </form>
 
       {error ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+        <p className="border-[3px] border-neo-ink bg-neo-yellow/50 px-3 py-2 text-sm font-bold text-neo-ink shadow-[3px_3px_0_0_var(--neo-ink)]">
           {error}
         </p>
       ) : null}
@@ -182,73 +189,74 @@ export default function TryOnPlayground() {
       {result ? (
         <section className="flex flex-col gap-4">
           {result.gemini_image_error ? (
-            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+            <p className="border-[3px] border-neo-ink bg-neo-yellow/40 px-3 py-2 text-sm font-bold text-neo-ink shadow-[3px_3px_0_0_var(--neo-ink)]">
               {result.gemini_image_error}
             </p>
           ) : null}
 
-          <div>
-            <h3 className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+          <div className="neo-card-sm rounded-sm p-5">
+            <h3 className="text-sm font-bold text-neo-ink">
               Garments from outfit ({result.outfit_summary.items.length})
             </h3>
             {typeof result.segments_sent_to_model === "number" &&
             typeof result.segments_detected === "number" &&
             result.segments_detected > 0 ? (
-              <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+              <p className="mt-1 text-xs font-medium text-neo-mute">
                 Try-on model: {result.segments_sent_to_model} of {result.segments_detected} segments
                 {result.segments_omitted ? (
-                  <span className="text-amber-700 dark:text-amber-300">
+                  <span className="text-neo-ink">
                     {" "}
-                    ({result.segments_omitted} not sent — raise <code className="text-xs">TRYON_MAX_SEGMENTS</code>)
+                    ({result.segments_omitted} not sent — raise{" "}
+                    <code className="neo-code rounded-sm px-1 text-[10px]">TRYON_MAX_SEGMENTS</code>)
                   </span>
                 ) : null}
               </p>
             ) : null}
             {result.outfit_summary.segments_dir ? (
-              <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+              <p className="mt-2 text-xs font-medium text-neo-mute">
                 Saved cutouts:{" "}
-                <code className="break-all">{result.outfit_summary.segments_dir}</code>
+                <code className="break-all font-mono text-[11px] text-neo-ink">{result.outfit_summary.segments_dir}</code>
                 {result.outfit_summary.segment_manifest ? (
                   <>
                     {" "}
-                    · <code className="text-xs">{result.outfit_summary.segment_manifest}</code>
+                    ·{" "}
+                    <code className="font-mono text-[11px] text-neo-ink">{result.outfit_summary.segment_manifest}</code>
                   </>
                 ) : null}
               </p>
             ) : null}
             {result.outfit_summary.gemini_annotation_error ? (
-              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+              <p className="mt-2 text-xs font-bold text-neo-accent">
                 Annotation note: {result.outfit_summary.gemini_annotation_error}
               </p>
             ) : null}
-            <ul className="mt-2 flex flex-col gap-1.5 text-sm text-zinc-700 dark:text-zinc-300">
+            <ul className="mt-3 flex flex-col gap-2 text-sm font-medium text-neo-mute">
               {result.outfit_summary.items.map((it) => (
-                <li key={`g-${it.index}-${it.caption}`}>
-                  <span className="font-medium text-zinc-900 dark:text-zinc-100">{it.caption}</span>
-                  {it.clothing?.body_region ? (
-                    <span className="text-zinc-500 dark:text-zinc-400"> — {it.clothing.body_region}</span>
-                  ) : null}
+                <li key={`g-${it.index}-${it.caption}`} className="border-l-[3px] border-neo-ink pl-3">
+                  <span className="font-bold text-neo-ink">{it.caption}</span>
+                  {it.clothing?.body_region ? <span> — {it.clothing.body_region}</span> : null}
                 </li>
               ))}
             </ul>
           </div>
 
           {resultSrc ? (
-            <div className="flex flex-col gap-2">
-              <h3 className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Result</h3>
+            <div className="flex flex-col gap-3">
+              <h3 className="text-sm font-bold text-neo-ink">Result</h3>
               {result.gemini_image_model ? (
-                <p className="text-xs text-zinc-500">
-                  Image model: <code>{result.gemini_image_model}</code> · pieces used: {result.garments_applied}
+                <p className="text-xs font-medium text-neo-mute">
+                  Image model: <code className="font-mono text-neo-ink">{result.gemini_image_model}</code> · pieces used:{" "}
+                  {result.garments_applied}
                 </p>
               ) : null}
               {result.image_model_text ? (
-                <p className="text-xs text-zinc-600 dark:text-zinc-400">{result.image_model_text}</p>
+                <p className="text-xs font-medium text-neo-mute">{result.image_model_text}</p>
               ) : null}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={resultSrc}
                 alt="Try-on result"
-                className="max-h-[70vh] w-full rounded-lg border border-zinc-200 object-contain dark:border-zinc-700"
+                className="max-h-[70vh] w-full border-[3px] border-neo-ink object-contain shadow-[6px_6px_0_0_var(--neo-ink)]"
               />
             </div>
           ) : null}

@@ -15,6 +15,7 @@ export function setToken(token: string) {
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem("styleme_user_id");
 }
 
 export function getUser(): User | null {
