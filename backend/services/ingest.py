@@ -162,7 +162,11 @@ def create_cutout(rgb: Image.Image, mask_png_b64: str, bbox: list[int], pad_frac
 # ── Garment builder ──────────────────────────────────────────────────
 
 def build_garment(segment: dict[str, Any], cutout_b64: str) -> dict[str, Any]:
-    """Build a rich garment dict from a SAM segment with Gemini annotations."""
+    """Build a rich garment dict from a SAM segment with Gemini annotations.
+
+    Gemini provides all garment metadata (color, pattern, material, style, etc.).
+    Text-scanning is only used as a last-resort fallback if Gemini didn't provide a field.
+    """
     clothing = segment.get("clothing") or {}
 
     garment_type = clothing.get("garment_type", segment.get("category", "clothing item"))
@@ -170,28 +174,46 @@ def build_garment(segment: dict[str, Any], cutout_b64: str) -> dict[str, Any]:
     body_region = clothing.get("body_region", "")
     details = clothing.get("notable_details", "")
 
-    color = _extract_from_text(details + " " + short_label, KNOWN_COLORS)
-    pattern = _extract_from_text(details, KNOWN_PATTERNS) or "solid"
-    material = _extract_from_text(details, KNOWN_MATERIALS)
+    color = (clothing.get("primary_color") or "").strip().lower()
+    if not color:
+        color = _extract_from_text(details + " " + short_label, KNOWN_COLORS)
+
+    pattern = (clothing.get("pattern") or "").strip().lower()
+    if not pattern:
+        pattern = _extract_from_text(details, KNOWN_PATTERNS) or "solid"
+
+    material = (clothing.get("material_estimate") or "").strip().lower()
+    if not material:
+        material = _extract_from_text(details, KNOWN_MATERIALS)
+
     cluster = assign_cluster(garment_type, body_region)
 
-    # Layering role from cluster
-    if cluster == "outerwear":
-        layer = "outer"
-    elif cluster in ("upper_body", "lower_body", "full_body"):
-        layer = "inner"
-    else:
-        layer = "accessory"
+    layer = (clothing.get("layering_role") or "").strip().lower()
+    if not layer:
+        if cluster == "outerwear":
+            layer = "outer"
+        elif cluster in ("upper_body", "lower_body", "full_body"):
+            layer = "inner"
+        else:
+            layer = "accessory"
 
-    # Rich description for embedding
+    style_tags = clothing.get("style_tags") or []
+    if not style_tags:
+        style_tags = [t.strip() for t in short_label.lower().split() if len(t.strip()) > 2][:5]
+
+    season = clothing.get("season") or ["spring", "summer", "fall", "winter"]
+    formality = clothing.get("formality_level", 5)
+    versatility = clothing.get("versatility_score", 5)
+
     desc_parts = [garment_type]
     if color:
         desc_parts.append(f"in {color}")
     if material:
         desc_parts.append(f"made of {material}")
-    if pattern != "solid":
+    if pattern and pattern != "solid":
         desc_parts.append(f"with {pattern} pattern")
-    desc_parts.append(f"for {body_region}" if body_region else "")
+    if body_region:
+        desc_parts.append(f"for {body_region}")
     if details:
         desc_parts.append(f"— {details}")
     description = " ".join(p for p in desc_parts if p).strip()
@@ -212,10 +234,10 @@ def build_garment(segment: dict[str, Any], cutout_b64: str) -> dict[str, Any]:
         "image_base64": cutout_b64,
         "confidence": round(segment.get("confidence", 0), 4),
         "bbox": segment.get("bbox", []),
-        "style_tags": [t.strip() for t in short_label.lower().split() if len(t.strip()) > 2][:5],
-        "season": ["spring", "summer", "fall", "winter"],
-        "formality_level": 5,
-        "versatility_score": 5,
+        "style_tags": style_tags,
+        "season": season,
+        "formality_level": formality,
+        "versatility_score": versatility,
     }
 
 

@@ -2,7 +2,7 @@
 
 import io
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 router = APIRouter(tags=["store"])
@@ -54,92 +54,6 @@ async def store_segments(body: StoreSegmentsRequest):
             for g in saved
         ],
         "clusters": clusters,
-    }
-
-
-class ChatRequest(BaseModel):
-    user_id: str
-    message: str
-
-
-@router.post("/api/chat")
-async def chat(body: ChatRequest):
-    """
-    Search wardrobe by natural language. Uses HydraDB full_recall as primary,
-    falls back to local cache keyword search.
-    """
-    import json
-    import logging
-
-    from services.local_cache import load_cache, search_cache
-
-    logger = logging.getLogger(__name__)
-    user_id = body.user_id
-    message = body.message.strip()
-
-    if not user_id or not message:
-        return {"reply": "Send a user_id and message.", "matches": [], "total_wardrobe": 0}
-
-    all_items = load_cache(user_id)
-    matches: list[dict] = []
-
-    try:
-        from hydra_db import HydraDB
-        from core.config import settings
-
-        client = HydraDB(token=settings.hydradb_api_key)
-        result = client.recall.full_recall(
-            query=message,
-            tenant_id=settings.hydradb_tenant_id,
-            sub_tenant_id=f"user_{user_id}",
-            mode="fast",
-            max_results=12,
-            request_options={"timeout_in_seconds": 15},
-        )
-        if result and result.chunks:
-            for chunk in result.chunks:
-                d = chunk.model_dump() if hasattr(chunk, "model_dump") else {}
-                meta = d.get("tenant_metadata", "")
-                if isinstance(meta, str):
-                    try:
-                        meta = json.loads(meta)
-                    except (json.JSONDecodeError, TypeError):
-                        meta = {}
-                if meta.get("garment_id"):
-                    matches.append({
-                        "garment_id": meta.get("garment_id", ""),
-                        "garment_type": meta.get("garment_type", ""),
-                        "primary_color": meta.get("primary_color", ""),
-                        "cluster": meta.get("cluster", ""),
-                        "body_region": meta.get("body_region", ""),
-                        "description": (d.get("text") or "")[:200],
-                        "image_base64": meta.get("image_base64", ""),
-                    })
-        logger.info(f"HydraDB recall: {len(matches)} matches for '{message}'")
-    except Exception as e:
-        logger.warning(f"HydraDB recall failed, using local fallback: {e}")
-
-    if not matches:
-        matches = search_cache(user_id, message, limit=8)
-
-    if not matches:
-        matches = all_items[:8] if all_items else []
-
-    top_names = ", ".join(
-        f"{m.get('primary_color', '')} {m.get('garment_type', 'item')}".strip()
-        for m in matches[:3]
-    )
-    reply = f"Found {len(matches)} matches: {top_names}" if matches else "No matches found."
-    if len(matches) > 3:
-        reply += f" and {len(matches) - 3} more"
-    if matches:
-        reply += "."
-
-    return {
-        "reply": reply,
-        "matches": matches,
-        "total_wardrobe": len(all_items),
-        "search_method": "hydradb" if any(m.get("image_base64") for m in matches) else "keyword",
     }
 
 

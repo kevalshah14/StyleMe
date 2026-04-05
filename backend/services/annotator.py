@@ -33,11 +33,47 @@ class ClothingSegmentAnnotation(BaseModel):
     )
     garment_type: str = Field(
         ...,
-        description='Concrete garment or accessory, e.g. "straight-leg denim jeans", "oversized hoodie".',
+        description='Concrete garment name, e.g. "straight-leg denim jeans", "oversized hoodie", "leather chelsea boots".',
     )
     body_region: str = Field(
         ...,
         description='Body coverage: e.g. "lower body / legs", "upper body / torso", "feet", "full body garment".',
+    )
+    primary_color: str = Field(
+        ...,
+        description='Single dominant visible color, e.g. "white", "navy", "red", "beige". Use a common color name.',
+    )
+    pattern: str = Field(
+        default="solid",
+        description='Visual pattern: "solid", "striped", "plaid", "floral", "checkered", "geometric", "polka dot", "abstract", "animal print", "camouflage", etc.',
+    )
+    material_estimate: str = Field(
+        default="",
+        description='Best guess at fabric/material, e.g. "cotton", "denim", "leather", "wool", "polyester", "silk", "linen".',
+    )
+    layering_role: str = Field(
+        default="inner",
+        description='Layering position: "inner" (base layer / standalone), "outer" (jacket, coat, cardigan), or "accessory".',
+    )
+    style_tags: list[str] = Field(
+        default_factory=list,
+        description='2-5 fashion style tags, e.g. ["casual", "streetwear", "minimalist", "athleisure"].',
+    )
+    season: list[str] = Field(
+        default_factory=lambda: ["spring", "summer", "fall", "winter"],
+        description='Seasons this garment suits, subset of ["spring", "summer", "fall", "winter"].',
+    )
+    formality_level: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+        description="Formality from 1 (very casual, e.g. gym shorts) to 10 (black-tie formal).",
+    )
+    versatility_score: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+        description="How many different outfits/occasions this piece works with. 1 = very niche, 10 = goes with everything.",
     )
     short_label: str = Field(
         ...,
@@ -45,7 +81,7 @@ class ClothingSegmentAnnotation(BaseModel):
     )
     notable_details: str = Field(
         default="",
-        description="Optional: color/pattern, texture, layering (outer vs inner).",
+        description="Optional extras: texture, fit, secondary colors, logos, distressing, etc.",
     )
 
 
@@ -121,10 +157,11 @@ def run_clothing_annotation(rgb: Image.Image, items: list[dict[str, Any]]) -> di
         crops_bytes.append(_crop_patch_bytes(rgba, it[bkey], pad_frac=CROP_PAD_FRAC))
 
     lines = [
-        "You label clothing for a fashion app.",
+        "You are a fashion expert labeling clothing for a wardrobe app.",
         f"The first image is the full photo (context). The next {n} images are isolated clothing regions in order: Segment 0 through Segment {n - 1}.",
-        "Outside the garment is transparent in those crops — infer garment type using both the full photo and the crop.",
-        "For each segment, output structured fields: specific garment/accessory, body region covered, a short UI label (≤6 words), optional notable details.",
+        "Outside the garment is transparent in those crops — infer every attribute using both the full photo and the crop.",
+        "For each segment, provide ALL structured fields: garment type, body region, primary color, pattern, material, layering role, style tags, seasons, formality (1-10), versatility (1-10), short UI label (≤6 words), and notable details.",
+        "Be precise about the primary_color — name the single most dominant color you see (e.g. 'navy' not 'blue', 'cream' not 'white' if appropriate).",
         f"Return JSON with exactly {n} entries in `segments`, indices 0..{n - 1}, no extra keys at the top level besides `segments`.",
     ]
     intro = "\n".join(lines)
@@ -175,6 +212,14 @@ def run_clothing_annotation(rgb: Image.Image, items: list[dict[str, Any]]) -> di
         it["clothing"] = {
             "garment_type": ann.garment_type,
             "body_region": ann.body_region,
+            "primary_color": ann.primary_color,
+            "pattern": ann.pattern,
+            "material_estimate": ann.material_estimate,
+            "layering_role": ann.layering_role,
+            "style_tags": ann.style_tags,
+            "season": ann.season,
+            "formality_level": ann.formality_level,
+            "versatility_score": ann.versatility_score,
             "short_label": ann.short_label,
             "notable_details": ann.notable_details or "",
         }
