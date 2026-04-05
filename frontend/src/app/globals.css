@@ -499,3 +499,100 @@ body {
   50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }
   75% { border-radius: 55% 45% 45% 55% / 40% 55% 45% 60%; }
 }
+
+/* ─── Chat Markdown ───────────────────────────────────────── */
+
+.chat-md > *:first-child { margin-top: 0; }
+.chat-md > *:last-child { margin-bottom: 0; }
+
+.chat-md p { margin: 0.4em 0; }
+.chat-md p + p { margin-top: 0.6em; }
+
+.chat-md strong { font-weight: 800; }
+.chat-md em { font-style: italic; }
+
+.chat-md h1, .chat-md h2, .chat-md h3, .chat-md h4 {
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.03em;
+  margin: 0.8em 0 0.3em;
+}
+.chat-md h1 { font-size: 1.15em; }
+.chat-md h2 { font-size: 1.05em; }
+.chat-md h3 { font-size: 1em; }
+
+.chat-md ul, .chat-md ol {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+.chat-md ul { list-style: disc; }
+.chat-md ol { list-style: decimal; }
+.chat-md li { margin: 0.2em 0; }
+.chat-md li::marker { color: var(--neo-accent); font-weight: 800; }
+
+.chat-md a {
+  color: var(--neo-accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+  transition: color 0.15s ease;
+}
+.chat-md a:hover { color: var(--neo-ink); }
+
+.chat-md code {
+  border: 2px solid var(--neo-border);
+  background: color-mix(in srgb, var(--neo-yellow) 15%, var(--neo-surface));
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+}
+
+.chat-md pre {
+  border: 2px solid var(--neo-border);
+  background: var(--neo-surface);
+  box-shadow: 3px 3px 0 0 var(--neo-shadow);
+  padding: 0.75em 1em;
+  margin: 0.5em 0;
+  overflow-x: auto;
+  font-size: 0.85em;
+}
+.chat-md pre code {
+  border: none;
+  background: none;
+  padding: 0;
+  box-shadow: none;
+}
+
+.chat-md blockquote {
+  border-left: 4px solid var(--neo-accent);
+  padding-left: 0.8em;
+  margin: 0.5em 0;
+  color: var(--neo-mute);
+  font-style: italic;
+}
+
+.chat-md hr {
+  border: none;
+  border-top: 2px dashed var(--neo-border);
+  margin: 0.6em 0;
+}
+
+.chat-md table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.9em;
+  width: 100%;
+}
+.chat-md th, .chat-md td {
+  border: 2px solid var(--neo-border);
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
+.chat-md th {
+  background: var(--neo-yellow-soft);
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 0.85em;
+}

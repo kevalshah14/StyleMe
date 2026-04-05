@@ -2,9 +2,11 @@
 
 import { AppNav } from "@/components/AppNav";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { chat as apiChat } from "@/lib/api";
+import { chatStream } from "@/lib/api";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -16,10 +18,16 @@ type WardrobeItem = {
   image_base64: string;
 };
 
+type WebSource = {
+  title: string;
+  url: string;
+};
+
 type ChatMsg = {
   role: "user" | "assistant";
   text: string;
   matches?: WardrobeItem[];
+  webSources?: WebSource[];
   tryOnImage?: string;
   tryOnLoading?: boolean;
   tryOnError?: string;
@@ -74,36 +82,55 @@ export function OutfitChat() {
   async function sendMessage(text: string) {
     if (!text.trim() || !userId) return;
     const trimmed = text.trim();
-    setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
+    const history = buildHistory();
+
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", text: trimmed },
+      { role: "assistant", text: "" },
+    ]);
     setInput("");
     setLoading(true);
+
     try {
-      const history = buildHistory();
-      const data = await apiChat(trimmed, history);
-      const matches: WardrobeItem[] = (data.matches as unknown as WardrobeItem[]) || [];
-      const hasOutfit = matches.length > 0;
-      const msgIndex = messages.length + 1;
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: data.reply,
-          matches: hasOutfit ? matches : undefined,
-          tryOnLoading: hasOutfit,
+      await chatStream(
+        trimmed,
+        history,
+        (chunk) => {
+          setMessages((prev) => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            copy[copy.length - 1] = { ...last, text: last.text + chunk };
+            return copy;
+          });
         },
-      ]);
-      setLoading(false);
-
-      if (hasOutfit) {
-        triggerTryOn(msgIndex, matches, trimmed);
-      }
+        (meta) => {
+          setMessages((prev) => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            const matches = (meta.matches as unknown as WardrobeItem[]) || [];
+            const webSources = (meta.web_sources as unknown as WebSource[]) || [];
+            copy[copy.length - 1] = {
+              ...last,
+              matches: matches.length > 0 ? matches : undefined,
+              webSources: webSources.length > 0 ? webSources : undefined,
+            };
+            return copy;
+          });
+        },
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", text: `Oops — something went wrong. ${msg.slice(0, 100)}` },
-      ]);
+      setMessages((prev) => {
+        const copy = [...prev];
+        const last = copy[copy.length - 1];
+        if (last.role === "assistant" && !last.text) {
+          copy[copy.length - 1] = { ...last, text: `Oops — something went wrong. ${msg.slice(0, 100)}` };
+        } else {
+          copy.push({ role: "assistant", text: `Oops — something went wrong. ${msg.slice(0, 100)}` });
+        }
+        return copy;
+      });
     } finally {
       setLoading(false);
     }
@@ -212,7 +239,9 @@ export function OutfitChat() {
         {/* Message thread */}
         {messages.length > 0 && (
           <div className="flex flex-1 flex-col gap-5 pb-28 pt-6">
-            {messages.map((msg, i) => (
+            {messages.map((msg, i) => {
+              if (msg.role === "assistant" && !msg.text && !msg.matches && !msg.webSources) return null;
+              return (
               <div
                 key={i}
                 className={`flex flex-col gap-3 ${msg.role === "user" ? "animate-slide-in-right items-end" : "animate-slide-in-left items-start"}`}
@@ -239,11 +268,51 @@ export function OutfitChat() {
                       msg.role === "user" ? "bg-neo-yellow-soft" : "bg-neo-surface"
                     }`}
                   >
-                    <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-neo-ink">
-                      {msg.text}
-                    </p>
+                    {msg.role === "user" ? (
+                      <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-neo-ink">
+                        {msg.text}
+                      </p>
+                    ) : (
+                      <div className="chat-md text-sm font-medium leading-relaxed text-neo-ink">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {msg.text}
+                        </ReactMarkdown>
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                {/* Web sources from Google Search */}
+                {msg.webSources && msg.webSources.length > 0 && (
+                  <div className="w-full max-w-[88%] pl-12">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="h-1.5 w-1.5 rounded-full bg-neo-blue animate-pulse-soft" />
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-neo-mute">
+                        Sources
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {msg.webSources.map((src, si) => (
+                        <a
+                          key={si}
+                          href={src.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="neo-card-interactive flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-neo-ink no-underline hover:bg-neo-cyan-soft transition-colors"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-neo-blue">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                          </svg>
+                          <span className="truncate max-w-[200px]">
+                            {src.title || new URL(src.url).hostname}
+                          </span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Outfit cards + try-on (only when matches exist) */}
                 {msg.matches && msg.matches.length > 0 && (
@@ -305,6 +374,28 @@ export function OutfitChat() {
                           </div>
                         ))}
                     </div>
+
+                    {/* Try-on button — only show if not already tried on or loading */}
+                    {!msg.tryOnImage && !msg.tryOnLoading && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const idx = i;
+                          setMessages((prev) =>
+                            prev.map((m, mi) => (mi === idx ? { ...m, tryOnLoading: true } : m)),
+                          );
+                          triggerTryOn(
+                            idx,
+                            msg.matches!,
+                            messages.filter((m) => m.role === "user").pop()?.text ?? "",
+                          );
+                        }}
+                        className="neo-btn neo-btn-pink mt-3 px-4 py-2.5 text-xs font-extrabold uppercase"
+                      >
+                        Try on this outfit
+                      </button>
+                    )}
+
                     <p className="mt-2 text-[10px] font-extrabold uppercase tracking-widest text-neo-mute">
                       {msg.selectedIds ? msg.selectedIds.size : msg.matches.length} piece
                       {(msg.selectedIds ? msg.selectedIds.size : msg.matches.length) === 1 ? "" : "s"} selected
@@ -312,10 +403,11 @@ export function OutfitChat() {
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
 
-            {/* Loading indicator */}
-            {loading && (
+            {/* Loading indicator — hide once streaming text starts arriving */}
+            {loading && !(messages.length > 0 && messages[messages.length - 1].role === "assistant" && messages[messages.length - 1].text) && (
               <div className="animate-fade-in flex items-start gap-3">
                 <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center border-2 border-neo-border bg-neo-accent shadow-[2px_2px_0_0_var(--neo-shadow)]">
                   <div className="h-3 w-3 rounded-full bg-white" />

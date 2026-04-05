@@ -1,13 +1,16 @@
-"""Gemini outfit recommendation assembly."""
+"""Gemini outfit recommendation assembly with compatibility scoring and trend awareness."""
 
 import json
+import logging
 import uuid
 
 from google import genai
 from google.genai import types
 
 from core.config import settings
-from models.outfit import ColorHarmony, OutfitItem, OutfitRecommendation
+from models.outfit import ColorHarmony, CompatibilityScores, OutfitItem, OutfitRecommendation
+
+logger = logging.getLogger(__name__)
 
 _client: genai.Client | None = None
 
@@ -19,7 +22,7 @@ def _get_client() -> genai.Client:
     return _client
 
 
-STYLIST_PROMPT = """You are a world-class personal stylist with deep knowledge of fashion, color theory, and occasion-appropriate dressing. You have access to the user's actual wardrobe.
+STYLIST_PROMPT = """You are a world-class personal stylist with deep knowledge of fashion, color theory, and occasion-appropriate dressing. You have access to the user's actual wardrobe. Use Google Search to incorporate current fashion trends when relevant.
 
 EVENT: {event_description}
 DRESS CODE: {dress_code}
@@ -39,9 +42,11 @@ Create exactly {num_outfits} complete outfit recommendations. For each outfit, r
 - "items": array of objects with "garment_id", "garment_type", "description", "styling_note"
 - "accessory_suggestions": array of strings
 - "color_harmony": object with "palette" (array of hex colors) and "analysis" (1 sentence)
+- "compatibility": object with integer scores 1-10 for "color_harmony", "style_coherence", "occasion_fit", "trend_alignment"
 - "confidence": integer 1-10
 - "explanation": 2-3 sentences on why this works
 - "overall_styling": 1-2 sentences on how to put it all together
+- "trend_note": 1 sentence connecting this outfit to a current fashion trend (use Google Search for up-to-date context)
 
 Return a JSON array of outfit objects. ONLY use garment_ids from the available items list.
 Be creative but practical. Respect any constraints absolutely."""
@@ -58,7 +63,7 @@ async def recommend_outfits(
     style_preferences: str,
     num_outfits: int = 3,
 ) -> list[OutfitRecommendation]:
-    """Generate outfit recommendations using Gemini."""
+    """Generate outfit recommendations using Gemini with Google Search grounding."""
     client = _get_client()
 
     prompt = STYLIST_PROMPT.format(
@@ -73,17 +78,21 @@ async def recommend_outfits(
         num_outfits=num_outfits,
     )
 
+    tools = [types.Tool(google_search=types.GoogleSearch())]
+
     response = client.models.generate_content(
         model="gemini-3.1-flash-lite-preview",
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
+            tools=tools,
         ),
     )
 
     try:
         outfits_data = json.loads(response.text)
     except (json.JSONDecodeError, AttributeError):
+        logger.warning("Stylist: failed to parse Gemini response, returning placeholder")
         return [
             OutfitRecommendation(
                 outfit_id=str(uuid.uuid4()),
@@ -110,6 +119,8 @@ async def recommend_outfits(
             )
 
         harmony_data = outfit.get("color_harmony", {})
+        compat_data = outfit.get("compatibility", {})
+
         recommendations.append(
             OutfitRecommendation(
                 outfit_id=str(uuid.uuid4()),
@@ -120,9 +131,16 @@ async def recommend_outfits(
                     palette=harmony_data.get("palette", []),
                     analysis=harmony_data.get("analysis", ""),
                 ),
+                compatibility=CompatibilityScores(
+                    color_harmony=min(10, max(1, compat_data.get("color_harmony", 7))),
+                    style_coherence=min(10, max(1, compat_data.get("style_coherence", 7))),
+                    occasion_fit=min(10, max(1, compat_data.get("occasion_fit", 7))),
+                    trend_alignment=min(10, max(1, compat_data.get("trend_alignment", 5))),
+                ),
                 confidence=min(10, max(1, outfit.get("confidence", 7))),
                 explanation=outfit.get("explanation", ""),
                 overall_styling=outfit.get("overall_styling", ""),
+                trend_note=outfit.get("trend_note", ""),
             )
         )
 

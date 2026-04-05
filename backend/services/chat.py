@@ -2,6 +2,9 @@
 
 import json
 import logging
+import re
+from datetime import date
+from typing import Generator
 
 from google import genai
 from google.genai import types
@@ -19,29 +22,48 @@ MODEL = "gemini-3.1-flash-lite-preview"
 REQUIRED_SLOTS = ("upper_body", "lower_body", "footwear")
 FULL_BODY_SLOT = "full_body"
 
-SYSTEM_INSTRUCTION = """You are StyleMe, a friendly and opinionated personal stylist chatbot.
-You have access to the user's actual wardrobe via the search_wardrobe tool.
 
-RULES:
-- When the user asks for an outfit or styling advice, ALWAYS call search_wardrobe first to see what they own.
-- After getting wardrobe results, assemble a COMPLETE outfit (top + bottom + shoes at minimum, or a full-body garment + shoes). Never leave the user bare — always cover all body regions.
-- Be conversational, warm, and concise. Use fashion vocabulary naturally.
-- If the user asks about trends, shopping advice, or items they don't own, use your knowledge and Google Search to help.
-- When suggesting items to buy, be specific about what would complement their existing wardrobe.
-- If the user just wants to chat or ask a general question, respond naturally WITHOUT calling the wardrobe tool.
-- Return garment_ids in your response ONLY when you are recommending specific wardrobe items to wear.
-- Keep responses to 2-4 sentences for outfit picks, longer for style advice discussions."""
+def _build_system_instruction() -> str:
+    today = date.today().strftime("%B %d, %Y")
+    return f"""You are StyleMe, a friendly and opinionated personal stylist chatbot.
+Today's date is {today}.
+You have access to the user's actual wardrobe via the search_wardrobe tool and the web via Google Search.
+
+RESPONSE FORMAT:
+- Your reply is always conversational markdown text.
+- When recommending a specific outfit to WEAR from the wardrobe, you MUST end your message with an outfit block in this exact format:
+
+[OUTFIT]
+garment_id_1
+garment_id_2
+garment_id_3
+[/OUTFIT]
+
+- The [OUTFIT] block is the ONLY place garment_ids should ever appear. NEVER put garment_ids anywhere else in your text — not inline, not in parentheses, not as references. Refer to owned items by name like "your black trousers" or "the red button-up".
+
+TOOL SELECTION — THIS IS CRITICAL:
+- ONLY call search_wardrobe when the user explicitly asks you to make an outfit, style them, or pick items FROM THEIR WARDROBE/CLOSET. Keywords: "outfit", "wear", "style me", "from my wardrobe", "what can I wear", "pair with".
+- For ALL other requests — shopping, buying, trends, recommendations, "tell me a good X", "suggest X under $Y", "show me X", "search X", "find me X", product questions — DO NOT call search_wardrobe. Instead, rely on Google Search to find real products, prices, and links from the web.
+- When in doubt, use Google Search, NOT search_wardrobe.
+
+RESPONSE RULES:
+- OUTFIT REQUESTS (search_wardrobe): Call search_wardrobe, pick pieces, describe the outfit, then add the [OUTFIT] block at the end. Always make it complete (top + bottom + shoes, or full-body + shoes).
+- SHOPPING / TREND REQUESTS (Google Search): Use Google Search. Include markdown links to real web pages (e.g. [Product Name](https://url)). Do NOT call search_wardrobe. Do NOT include an [OUTFIT] block.
+- GENERAL CHAT: Respond naturally without calling any tools.
+- Be conversational, warm, and concise. Use fashion vocabulary.
+- When occasion context is provided (event, weather, date, dress code), factor it into your recommendations.
+- ALWAYS use the current year ({date.today().year}) when discussing trends, not past years."""
 
 
 SEARCH_WARDROBE_DECL = {
     "name": "search_wardrobe",
-    "description": "Search the user's wardrobe for clothing items matching a query. Returns garment metadata including type, color, cluster (upper_body, lower_body, footwear, outerwear, full_body, accessory), and images.",
+    "description": "Search the user's OWNED wardrobe to assemble an outfit they can WEAR right now. ONLY use this when the user asks to be styled, wants an outfit, or asks what they own. Do NOT use for shopping, buying, trends, or product recommendations — use Google Search for those instead.",
     "parameters": {
         "type": "object",
         "properties": {
             "query": {
                 "type": "string",
-                "description": "Natural language search query, e.g. 'blue shirts', 'warm jacket', 'all tops'",
+                "description": "Search within the user's owned clothes, e.g. 'blue shirts', 'warm jacket', 'all tops'",
             },
             "limit": {
                 "type": "integer",
@@ -171,14 +193,38 @@ def _ensure_complete_outfit(user_id: str, items: list[dict]) -> list[dict]:
     return items
 
 
-def _extract_garment_ids_from_text(text: str, all_items: list[dict]) -> list[dict]:
-    """Find which garment IDs the model mentioned in its reply."""
-    mentioned = []
-    for item in all_items:
-        gid = item.get("garment_id", "")
-        if gid and gid in text:
-            mentioned.append(item)
-    return mentioned
+WARDROBE_TOOLS = [types.Tool(function_declarations=[SEARCH_WARDROBE_DECL])]
+SEARCH_TOOLS = [types.Tool(google_search=types.GoogleSearch())]
+
+
+_OUTFIT_BLOCK_RE = re.compile(
+    r"\[OUTFIT\]\s*(.*?)\s*\[/OUTFIT\]",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _extract_outfit_block(text: str, all_items: list[dict]) -> tuple[str, list[dict]]:
+    """Parse [OUTFIT]...[/OUTFIT] block from reply.
+
+    Returns (cleaned_reply_text, matched_items).
+    The block is stripped from the display text.
+    """
+    match = _OUTFIT_BLOCK_RE.search(text)
+    if not match:
+        return text, []
+
+    block_ids = set()
+    for line in match.group(1).strip().splitlines():
+        gid = line.strip()
+        if gid:
+            block_ids.add(gid)
+
+    clean_text = text[:match.start()].rstrip() + text[match.end():]
+    clean_text = clean_text.strip()
+
+    items_by_id = {it.get("garment_id", ""): it for it in all_items}
+    mentioned = [items_by_id[gid] for gid in block_ids if gid in items_by_id]
+    return clean_text, mentioned
 
 
 def _build_gemini_history(history: list[dict] | None) -> list[types.Content]:
@@ -194,111 +240,206 @@ def _build_gemini_history(history: list[dict] | None) -> list[types.Content]:
     return contents
 
 
+def _extract_reply_text(response) -> str:
+    """Robustly extract text from a Gemini response, handling grounded responses."""
+    if response is None:
+        return "I couldn't come up with a response. Try again?"
+
+    try:
+        text = response.text
+        if text:
+            return text
+    except (ValueError, AttributeError):
+        pass
+
+    # Fallback: walk response parts manually
+    try:
+        candidate = response.candidates[0] if response.candidates else None
+        if candidate and candidate.content and candidate.content.parts:
+            text_parts = []
+            for part in candidate.content.parts:
+                if hasattr(part, "text") and part.text:
+                    text_parts.append(part.text)
+            if text_parts:
+                return "\n\n".join(text_parts)
+    except (IndexError, AttributeError):
+        pass
+
+    return "I couldn't come up with a response. Try again?"
+
+
+def _extract_grounding_sources(response) -> list[dict]:
+    """Extract web sources from Gemini grounding metadata."""
+    sources: list[dict] = []
+    if response is None:
+        return sources
+
+    try:
+        candidate = response.candidates[0] if response.candidates else None
+        if not candidate:
+            return sources
+
+        grounding = getattr(candidate, "grounding_metadata", None)
+        if not grounding:
+            return sources
+
+        chunks = getattr(grounding, "grounding_chunks", None) or []
+        seen_urls: set[str] = set()
+        for chunk in chunks:
+            web = getattr(chunk, "web", None)
+            if not web:
+                continue
+            uri = getattr(web, "uri", "") or ""
+            title = getattr(web, "title", "") or ""
+            if uri and uri not in seen_urls:
+                seen_urls.add(uri)
+                sources.append({"title": title, "url": uri})
+
+        # Also check grounding_supports for search queries used
+        supports = getattr(grounding, "grounding_supports", None) or []
+        for support in supports:
+            seg_sources = getattr(support, "grounding_chunk_indices", None) or []
+            # Just confirms the text is grounded, no extra action needed
+
+        search_entry = getattr(grounding, "search_entry_point", None)
+        if search_entry:
+            rendered = getattr(search_entry, "rendered_content", None)
+            if rendered:
+                logger.debug(f"Search entry point rendered: {rendered[:100]}...")
+
+    except (IndexError, AttributeError) as e:
+        logger.debug(f"Grounding extraction: {e}")
+
+    return sources
+
+
 async def chat_response(
     user_id: str,
     message: str,
     history: list[dict] | None = None,
+    occasion: dict | None = None,
 ) -> dict:
     """
     Gemini-powered conversational stylist.
-    Uses function calling for wardrobe search and Google Search for trends/shopping.
-    Only returns outfit matches when the model decides it's relevant.
+
+    Combines Google Search (built-in, server-side) with search_wardrobe (custom function)
+    using include_server_side_tool_invocations per the Gemini docs.
     """
     query = (message or "").strip()
     if not query:
-        return {"reply": "Hey! Ask me anything about your style.", "wardrobe_items_used": 0, "sources": [], "matches": []}
+        return {"reply": "Hey! Ask me anything about your style.", "wardrobe_items_used": 0, "sources": [], "matches": [], "web_sources": []}
+
+    if occasion:
+        context_parts = []
+        if occasion.get("event"):
+            context_parts.append(f"Event: {occasion['event']}")
+        if occasion.get("weather"):
+            context_parts.append(f"Weather: {occasion['weather']}")
+        if occasion.get("date"):
+            context_parts.append(f"Date: {occasion['date']}")
+        if occasion.get("dress_code"):
+            context_parts.append(f"Dress code: {occasion['dress_code']}")
+        if context_parts:
+            query = f"{query}\n\n[Occasion context: {'; '.join(context_parts)}]"
 
     client = _get_gemini()
-    tools = [
-        types.Tool(
-            google_search=types.GoogleSearch(),
-            function_declarations=[SEARCH_WARDROBE_DECL],
-        ),
-    ]
-    config = types.GenerateContentConfig(
-        system_instruction=SYSTEM_INSTRUCTION,
-        tools=tools,
-        temperature=1.0,
-        thinking_config=types.ThinkingConfig(thinking_level="low"),
+    sys_instruction = _build_system_instruction()
+
+    wardrobe_config = types.GenerateContentConfig(
+        system_instruction=sys_instruction, tools=WARDROBE_TOOLS, temperature=1.0,
+    )
+    search_config = types.GenerateContentConfig(
+        system_instruction=sys_instruction, tools=SEARCH_TOOLS, temperature=1.0,
     )
 
     contents = _build_gemini_history(history)
     contents.append(types.Content(role="user", parts=[types.Part(text=query)]))
 
     all_wardrobe_items: list[dict] = []
-    max_tool_rounds = 3
+    response = None
 
-    for _ in range(max_tool_rounds):
+    # Pass 1: wardrobe-only tools — let model decide if it needs the wardrobe
+    logger.info("Pass 1: wardrobe tool check")
+    try:
         response = client.models.generate_content(
-            model=MODEL,
-            contents=contents,
-            config=config,
+            model=MODEL, contents=contents, config=wardrobe_config,
+        )
+    except Exception as e:
+        logger.error(f"Gemini pass 1 failed: {e}")
+
+    fc_part = None
+    if response and response.candidates:
+        candidate = response.candidates[0]
+        if candidate and candidate.content and candidate.content.parts:
+            for part in candidate.content.parts:
+                if part.function_call and part.function_call.name == "search_wardrobe":
+                    fc_part = part
+                    break
+
+    if fc_part is not None:
+        # Model wants wardrobe → execute search, follow up without tools
+        args = fc_part.function_call.args or {}
+        search_q = args.get("query", query)
+        limit = args.get("limit", 12)
+
+        items = _execute_wardrobe_search(user_id, search_q, limit=limit)
+        all_wardrobe_items.extend(items)
+        logger.info(f"Wardrobe search '{search_q}': {len(items)} results")
+
+        items_summary = json.dumps(
+            [
+                {
+                    "garment_id": it["garment_id"],
+                    "garment_type": it["garment_type"],
+                    "primary_color": it["primary_color"],
+                    "cluster": it["cluster"],
+                    "pattern": it.get("pattern", ""),
+                    "material": it.get("material_estimate", ""),
+                    "description": it.get("description", ""),
+                }
+                for it in items
+            ],
+            indent=2,
         )
 
-        candidate = response.candidates[0] if response.candidates else None
-        if not candidate:
-            break
+        contents.append(candidate.content)
+        fn_resp_part = types.Part.from_function_response(
+            name="search_wardrobe",
+            response={"result": {"items": items_summary, "count": len(items)}},
+            id=fc_part.function_call.id,
+        )
+        contents.append(types.Content(role="user", parts=[fn_resp_part]))
 
-        has_function_call = False
-        for part in candidate.content.parts:
-            if part.function_call and part.function_call.name == "search_wardrobe":
-                has_function_call = True
-                args = part.function_call.args or {}
-                search_q = args.get("query", query)
-                limit = args.get("limit", 12)
+        logger.info("Pass 2: wardrobe follow-up")
+        try:
+            response = client.models.generate_content(
+                model=MODEL, contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=sys_instruction, temperature=1.0,
+                ),
+            )
+        except Exception as e:
+            logger.error(f"Gemini wardrobe follow-up failed: {e}")
+    else:
+        # Model didn't need wardrobe → redo with Google Search for web grounding
+        logger.info("Pass 2: Google Search grounding")
+        try:
+            response = client.models.generate_content(
+                model=MODEL, contents=contents, config=search_config,
+            )
+        except Exception as e:
+            logger.error(f"Gemini search pass failed: {e}")
 
-                items = _execute_wardrobe_search(user_id, search_q, limit=limit)
-                all_wardrobe_items.extend(items)
-                logger.info(f"Wardrobe search '{search_q}': {len(items)} results")
+    raw_reply = _extract_reply_text(response)
+    web_sources = _extract_grounding_sources(response)
 
-                items_summary = json.dumps(
-                    [
-                        {
-                            "garment_id": it["garment_id"],
-                            "garment_type": it["garment_type"],
-                            "primary_color": it["primary_color"],
-                            "cluster": it["cluster"],
-                            "pattern": it.get("pattern", ""),
-                            "material": it.get("material_estimate", ""),
-                            "description": it.get("description", ""),
-                        }
-                        for it in items
-                    ],
-                    indent=2,
-                )
+    if web_sources:
+        logger.info(f"Google Search grounding: {len(web_sources)} web sources")
 
-                contents.append(candidate.content)
-
-                fn_response_part = types.Part.from_function_response(
-                    name="search_wardrobe",
-                    response={"items": items_summary, "count": len(items)},
-                )
-                if part.function_call.id:
-                    fn_response_part.function_response.id = part.function_call.id
-
-                contents.append(
-                    types.Content(role="user", parts=[fn_response_part])
-                )
-                break
-
-        if not has_function_call:
-            break
-
-    reply_text = response.text or "I couldn't come up with a response. Try again?"
-
-    mentioned = _extract_garment_ids_from_text(reply_text, all_wardrobe_items)
+    reply_text, mentioned = _extract_outfit_block(raw_reply, all_wardrobe_items)
 
     if mentioned:
         mentioned = _ensure_complete_outfit(user_id, mentioned)
-        seen = set()
-        deduped = []
-        for m in mentioned:
-            if m["garment_id"] not in seen:
-                deduped.append(m)
-                seen.add(m["garment_id"])
-        mentioned = deduped
-    elif all_wardrobe_items:
-        mentioned = _ensure_complete_outfit(user_id, all_wardrobe_items[:6])
         seen = set()
         deduped = []
         for m in mentioned:
@@ -320,4 +461,205 @@ async def chat_response(
             for m in mentioned
         ],
         "matches": mentioned,
+        "web_sources": web_sources,
     }
+
+
+# ---------------------------------------------------------------------------
+# Streaming
+# ---------------------------------------------------------------------------
+
+def _sse_event(data: dict) -> str:
+    return f"data: {json.dumps(data, default=str)}\n\n"
+
+
+def _build_items_summary(items: list[dict]) -> str:
+    return json.dumps(
+        [
+            {
+                "garment_id": it["garment_id"],
+                "garment_type": it["garment_type"],
+                "primary_color": it["primary_color"],
+                "cluster": it["cluster"],
+                "pattern": it.get("pattern", ""),
+                "material": it.get("material_estimate", ""),
+                "description": it.get("description", ""),
+            }
+            for it in items
+        ],
+        indent=2,
+    )
+
+
+def _postprocess_mentioned(user_id: str, mentioned: list[dict]) -> list[dict]:
+    if mentioned:
+        mentioned = _ensure_complete_outfit(user_id, mentioned)
+        seen: set[str] = set()
+        deduped: list[dict] = []
+        for m in mentioned:
+            if m["garment_id"] not in seen:
+                deduped.append(m)
+                seen.add(m["garment_id"])
+        return deduped
+    return mentioned
+
+
+def _build_done_event(mentioned: list[dict], web_sources: list[dict]) -> dict:
+    return {
+        "type": "done",
+        "web_sources": web_sources,
+        "wardrobe_items_used": len(mentioned),
+        "sources": [
+            {
+                "type": m.get("garment_type", "item"),
+                "color": m.get("primary_color", ""),
+                "garment_id": m.get("garment_id", ""),
+                "score": m.get("score"),
+            }
+            for m in mentioned
+        ],
+        "matches": mentioned,
+    }
+
+
+def chat_response_stream(
+    user_id: str,
+    message: str,
+    history: list[dict] | None = None,
+    occasion: dict | None = None,
+) -> Generator[str, None, None]:
+    """Streaming chat: yields SSE-formatted events (text chunks then metadata)."""
+    query = (message or "").strip()
+    if not query:
+        yield _sse_event({"type": "chunk", "text": "Hey! Ask me anything about your style."})
+        yield _sse_event(_build_done_event([], []))
+        return
+
+    if occasion:
+        ctx = []
+        if occasion.get("event"):
+            ctx.append(f"Event: {occasion['event']}")
+        if occasion.get("weather"):
+            ctx.append(f"Weather: {occasion['weather']}")
+        if occasion.get("date"):
+            ctx.append(f"Date: {occasion['date']}")
+        if occasion.get("dress_code"):
+            ctx.append(f"Dress code: {occasion['dress_code']}")
+        if ctx:
+            query = f"{query}\n\n[Occasion context: {'; '.join(ctx)}]"
+
+    client = _get_gemini()
+    sys_instruction = _build_system_instruction()
+
+    wardrobe_config = types.GenerateContentConfig(
+        system_instruction=sys_instruction, tools=WARDROBE_TOOLS, temperature=1.0,
+    )
+    search_config = types.GenerateContentConfig(
+        system_instruction=sys_instruction, tools=SEARCH_TOOLS, temperature=1.0,
+    )
+    plain_config = types.GenerateContentConfig(
+        system_instruction=sys_instruction, temperature=1.0,
+    )
+
+    contents = _build_gemini_history(history)
+    contents.append(types.Content(role="user", parts=[types.Part(text=query)]))
+
+    all_wardrobe_items: list[dict] = []
+
+    # Pass 1: wardrobe-only tools — let model decide if it needs the wardrobe
+    logger.info("Stream pass 1: wardrobe tool check")
+    try:
+        response = client.models.generate_content(
+            model=MODEL, contents=contents, config=wardrobe_config,
+        )
+    except Exception as e:
+        logger.error(f"Gemini pass 1 failed: {e}")
+        yield _sse_event({"type": "chunk", "text": "Sorry, something went wrong. Try again?"})
+        yield _sse_event(_build_done_event([], []))
+        return
+
+    candidate = response.candidates[0] if response.candidates else None
+    fc_part = None
+    if candidate and candidate.content and candidate.content.parts:
+        for part in candidate.content.parts:
+            if part.function_call and part.function_call.name == "search_wardrobe":
+                fc_part = part
+                break
+
+    if fc_part is not None:
+        # Model wants wardrobe → execute search, stream follow-up
+        args = fc_part.function_call.args or {}
+        search_q = args.get("query", query)
+        limit = args.get("limit", 12)
+
+        items = _execute_wardrobe_search(user_id, search_q, limit=limit)
+        all_wardrobe_items.extend(items)
+        logger.info(f"Wardrobe search '{search_q}': {len(items)} results")
+
+        contents.append(candidate.content)
+        fn_resp_part = types.Part.from_function_response(
+            name="search_wardrobe",
+            response={"result": {"items": _build_items_summary(items), "count": len(items)}},
+            id=fc_part.function_call.id,
+        )
+        contents.append(types.Content(role="user", parts=[fn_resp_part]))
+
+        logger.info("Stream pass 2: wardrobe follow-up (streaming)")
+        full_text = ""
+        last_chunk = None
+        try:
+            stream = client.models.generate_content_stream(
+                model=MODEL, contents=contents, config=plain_config,
+            )
+            for chunk in stream:
+                last_chunk = chunk
+                cand = chunk.candidates[0] if chunk.candidates else None
+                if not cand or not cand.content or not cand.content.parts:
+                    continue
+                for p in cand.content.parts:
+                    if hasattr(p, "text") and p.text:
+                        full_text += p.text
+                        yield _sse_event({"type": "chunk", "text": p.text})
+        except Exception as e:
+            logger.error(f"Gemini wardrobe stream failed: {e}")
+            if not full_text:
+                yield _sse_event({"type": "chunk", "text": "Sorry, something went wrong. Try again?"})
+                yield _sse_event(_build_done_event([], []))
+                return
+
+        web_sources = _extract_grounding_sources(last_chunk) if last_chunk else []
+        reply_text, mentioned = _extract_outfit_block(full_text, all_wardrobe_items)
+    else:
+        # Model didn't need wardrobe → use Google Search for web-grounded response
+        logger.info("Stream pass 2: Google Search (streaming)")
+        full_text = ""
+        last_chunk = None
+        try:
+            stream = client.models.generate_content_stream(
+                model=MODEL, contents=contents, config=search_config,
+            )
+            for chunk in stream:
+                last_chunk = chunk
+                cand = chunk.candidates[0] if chunk.candidates else None
+                if not cand or not cand.content or not cand.content.parts:
+                    continue
+                for p in cand.content.parts:
+                    if hasattr(p, "text") and p.text:
+                        full_text += p.text
+                        yield _sse_event({"type": "chunk", "text": p.text})
+        except Exception as e:
+            logger.error(f"Gemini search stream failed: {e}")
+            if not full_text:
+                yield _sse_event({"type": "chunk", "text": "Sorry, something went wrong. Try again?"})
+                yield _sse_event(_build_done_event([], []))
+                return
+
+        web_sources = _extract_grounding_sources(last_chunk) if last_chunk else []
+        reply_text, mentioned = _extract_outfit_block(full_text, [])
+
+    mentioned = _postprocess_mentioned(user_id, mentioned)
+
+    if web_sources:
+        logger.info(f"Google Search grounding: {len(web_sources)} web sources")
+
+    yield _sse_event(_build_done_event(mentioned, web_sources))

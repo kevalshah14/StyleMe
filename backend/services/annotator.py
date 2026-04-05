@@ -43,6 +43,10 @@ class ClothingSegmentAnnotation(BaseModel):
         ...,
         description='Single dominant visible color, e.g. "white", "navy", "red", "beige". Use a common color name.',
     )
+    hex_color: str = Field(
+        default="#808080",
+        description='CSS hex color code for the dominant color, e.g. "#2E4057", "#F5F5DC", "#8B0000". Must start with # and be 7 characters.',
+    )
     pattern: str = Field(
         default="solid",
         description='Visual pattern: "solid", "striped", "plaid", "floral", "checkered", "geometric", "polka dot", "abstract", "animal print", "camouflage", etc.',
@@ -78,6 +82,10 @@ class ClothingSegmentAnnotation(BaseModel):
     short_label: str = Field(
         ...,
         description="At most 6 words for a compact UI label.",
+    )
+    care_tip: str = Field(
+        default="",
+        description='Brief garment care advice based on the inferred material, e.g. "Machine wash cold, tumble dry low" for cotton, "Dry clean only" for silk.',
     )
     notable_details: str = Field(
         default="",
@@ -160,8 +168,9 @@ def run_clothing_annotation(rgb: Image.Image, items: list[dict[str, Any]]) -> di
         "You are a fashion expert labeling clothing for a wardrobe app.",
         f"The first image is the full photo (context). The next {n} images are isolated clothing regions in order: Segment 0 through Segment {n - 1}.",
         "Outside the garment is transparent in those crops — infer every attribute using both the full photo and the crop.",
-        "For each segment, provide ALL structured fields: garment type, body region, primary color, pattern, material, layering role, style tags, seasons, formality (1-10), versatility (1-10), short UI label (≤6 words), and notable details.",
+        "For each segment, provide ALL structured fields: garment type, body region, primary color, hex_color (CSS #RRGGBB), pattern, material, layering role, style tags, seasons, formality (1-10), versatility (1-10), care tip (brief washing/care advice based on material), short UI label (≤6 words), and notable details.",
         "Be precise about the primary_color — name the single most dominant color you see (e.g. 'navy' not 'blue', 'cream' not 'white' if appropriate).",
+        "For hex_color, provide the closest CSS hex code matching the actual visible color (e.g. '#1B2A4A' for navy, '#F5F5DC' for beige).",
         f"Return JSON with exactly {n} entries in `segments`, indices 0..{n - 1}, no extra keys at the top level besides `segments`.",
     ]
     intro = "\n".join(lines)
@@ -213,6 +222,7 @@ def run_clothing_annotation(rgb: Image.Image, items: list[dict[str, Any]]) -> di
             "garment_type": ann.garment_type,
             "body_region": ann.body_region,
             "primary_color": ann.primary_color,
+            "hex_color": ann.hex_color,
             "pattern": ann.pattern,
             "material_estimate": ann.material_estimate,
             "layering_role": ann.layering_role,
@@ -220,6 +230,7 @@ def run_clothing_annotation(rgb: Image.Image, items: list[dict[str, Any]]) -> di
             "season": ann.season,
             "formality_level": ann.formality_level,
             "versatility_score": ann.versatility_score,
+            "care_tip": ann.care_tip or "",
             "short_label": ann.short_label,
             "notable_details": ann.notable_details or "",
         }

@@ -7,6 +7,7 @@ import type {
   StyleDNA,
   User,
   ChatResponse,
+  ChatStreamDone,
   WardrobeMatch,
   WardrobeMatchResponse,
 } from "./types";
@@ -146,6 +147,52 @@ export async function chat(
     method: "POST",
     body: JSON.stringify({ message, history }),
   });
+}
+
+export async function chatStream(
+  message: string,
+  history: { role: string; content: string }[] = [],
+  onChunk: (text: string) => void,
+  onDone: (meta: ChatStreamDone) => void,
+): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}/api/chat/stream`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ message, history }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`API error ${res.status}: ${text}`);
+  }
+
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop()!;
+
+    for (const part of parts) {
+      const line = part.trim();
+      if (!line.startsWith("data: ")) continue;
+      try {
+        const data = JSON.parse(line.slice(6));
+        if (data.type === "chunk") onChunk(data.text as string);
+        else if (data.type === "done") onDone(data as ChatStreamDone);
+      } catch {
+        /* skip malformed events */
+      }
+    }
+  }
 }
 
 export async function inspectStats(): Promise<Record<string, unknown>> {

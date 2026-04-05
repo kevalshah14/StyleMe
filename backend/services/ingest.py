@@ -218,11 +218,18 @@ def build_garment(segment: dict[str, Any], cutout_b64: str) -> dict[str, Any]:
         desc_parts.append(f"— {details}")
     description = " ".join(p for p in desc_parts if p).strip()
 
+    hex_color = (clothing.get("hex_color") or "#808080").strip()
+    if not hex_color.startswith("#") or len(hex_color) != 7:
+        hex_color = "#808080"
+
+    care_tip = (clothing.get("care_tip") or "").strip()
+
     return {
         "garment_id": str(uuid.uuid4()),
         "garment_type": garment_type,
         "sub_type": short_label,
         "primary_color": color,
+        "hex_color": hex_color,
         "pattern": pattern,
         "material_estimate": material,
         "body_region": body_region,
@@ -238,6 +245,7 @@ def build_garment(segment: dict[str, Any], cutout_b64: str) -> dict[str, Any]:
         "season": season,
         "formality_level": formality,
         "versatility_score": versatility,
+        "care_tip": care_tip,
     }
 
 
@@ -265,6 +273,133 @@ def build_embedding_text(garment: dict) -> str:
     return " ".join(parts)
 
 
+# ── Duplicate detection & multi-angle merging ────────────────────────
+
+DUPLICATE_SIMILARITY_THRESHOLD = 0.88
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    if len(a) != len(b):
+        return 0.0
+    import math
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def _find_duplicate(
+    garment: dict[str, Any],
+    user_id: str,
+) -> dict[str, Any] | None:
+    """Check if an embedding-similar garment already exists in the user's cache.
+
+    Returns the existing garment dict if a duplicate is found, else None.
+    """
+    new_emb = garment.get("_embedding")
+    if not new_emb:
+        return None
+
+    try:
+        from services.local_cache import load_cache, _load_embeddings
+        existing = load_cache(user_id)
+        embeddings = _load_embeddings(user_id)
+    except Exception:
+        return None
+
+    if not existing or not embeddings:
+        return None
+
+    best_sim = 0.0
+    best_item: dict[str, Any] | None = None
+    for item in existing:
+        gid = item.get("garment_id", "")
+        vec = embeddings.get(gid)
+        if not vec:
+            continue
+        sim = _cosine_similarity(new_emb, vec)
+        if sim > best_sim:
+            best_sim = sim
+            best_item = item
+
+    if best_sim >= DUPLICATE_SIMILARITY_THRESHOLD and best_item:
+        logger.info(
+            f"Duplicate candidate: {garment.get('garment_type')} ↔ "
+            f"{best_item.get('garment_type')} (sim={best_sim:.3f})"
+        )
+        return best_item
+    return None
+
+
+def _confirm_duplicate_gemini(
+    new_cutout_b64: str,
+    existing_cutout_b64: str,
+) -> bool:
+    """Ask Gemini vision to confirm whether two garment images are the same item."""
+    try:
+        import os
+        from google import genai
+        from google.genai import types
+
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if not api_key:
+            return False
+
+        new_payload = new_cutout_b64.split(",", 1)[1] if "," in new_cutout_b64 else new_cutout_b64
+        old_payload = existing_cutout_b64.split(",", 1)[1] if "," in existing_cutout_b64 else existing_cutout_b64
+
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-3.1-flash-lite-preview",
+            contents=[
+                "Are these two images the same garment (possibly from different angles or lighting)? "
+                "Respond with ONLY a JSON object: {\"same_garment\": true} or {\"same_garment\": false}.",
+                types.Part.from_bytes(data=base64.b64decode(new_payload), mime_type="image/png"),
+                types.Part.from_bytes(data=base64.b64decode(old_payload), mime_type="image/png"),
+            ],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.1,
+            ),
+        )
+        import json as _json
+        result = _json.loads(response.text or "{}")
+        return bool(result.get("same_garment", False))
+    except Exception as e:
+        logger.warning(f"Gemini duplicate confirmation failed: {e}")
+        return False
+
+
+def _merge_garment_metadata(existing: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
+    """Merge a new garment's metadata into an existing one (multi-angle enrichment)."""
+    merged = dict(existing)
+
+    new_details = (new.get("notable_details") or "").strip()
+    old_details = (existing.get("notable_details") or "").strip()
+    if new_details and new_details.lower() != old_details.lower():
+        merged["notable_details"] = f"{old_details}; {new_details}".strip("; ")
+
+    new_tags = set(new.get("style_tags") or [])
+    old_tags = set(existing.get("style_tags") or [])
+    merged["style_tags"] = list(old_tags | new_tags)[:8]
+
+    if new.get("hex_color") and new["hex_color"] != "#808080" and existing.get("hex_color") == "#808080":
+        merged["hex_color"] = new["hex_color"]
+
+    if new.get("material_estimate") and not existing.get("material_estimate"):
+        merged["material_estimate"] = new["material_estimate"]
+
+    if new.get("care_tip") and not existing.get("care_tip"):
+        merged["care_tip"] = new["care_tip"]
+
+    if new.get("pattern") and new["pattern"] != "solid" and existing.get("pattern") == "solid":
+        merged["pattern"] = new["pattern"]
+
+    return merged
+
+
 # ── HydraDB storage ─────────────────────────────────────────────────
 
 def _store_hydradb(user_id: str, garment: dict, cutout_b64: str) -> bool:
@@ -283,11 +418,13 @@ def _store_hydradb(user_id: str, garment: dict, cutout_b64: str) -> bool:
             "garment_id": gid,
             "garment_type": garment.get("garment_type", ""),
             "primary_color": garment.get("primary_color", ""),
+            "hex_color": garment.get("hex_color", "#808080"),
             "cluster": garment.get("cluster", ""),
             "body_region": garment.get("body_region", ""),
             "pattern": garment.get("pattern", ""),
             "material_estimate": garment.get("material_estimate", ""),
             "layering_role": garment.get("layering_role", ""),
+            "care_tip": garment.get("care_tip", ""),
             "image_base64": cutout_b64,
         })
         
@@ -358,6 +495,28 @@ async def ingest_segments(
             f"cluster={garment['cluster']} | "
             f"conf={garment['confidence']}"
         )
+
+        # 2b. Generate Gemini embedding for semantic search
+        try:
+            from services.embedder import embed_garment
+            embedding = embed_garment(garment)
+            garment["_embedding"] = embedding
+        except Exception as e:
+            logger.warning(f"Segment {i}: embedding generation failed (non-fatal): {e}")
+
+        # 2c. Duplicate detection — skip if same garment already in wardrobe
+        duplicate = _find_duplicate(garment, user_id)
+        if duplicate:
+            existing_img = duplicate.get("image_base64", "")
+            if _confirm_duplicate_gemini(cutout_b64, existing_img):
+                merged = _merge_garment_metadata(duplicate, garment)
+                from services.local_cache import save_to_cache as _update_cache
+                _update_cache(user_id, merged)
+                logger.info(
+                    f"Segment {i}: duplicate of {duplicate.get('garment_id', '?')}, merged metadata"
+                )
+                saved.append(merged)
+                continue
 
         # 3. HydraDB (non-blocking — don't fail the pipeline if HydraDB is down)
         ok = _store_hydradb(user_id, garment, cutout_b64)

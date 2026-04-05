@@ -34,15 +34,24 @@ def _embedding_path(user_id: str) -> Path:
 # ── Basic CRUD ───────────────────────────────────────────────────────
 
 def save_to_cache(user_id: str, garment: dict):
-    """Append garment to user's local cache. Deduplicates by garment_id."""
+    """Save garment to user's local cache. Updates in-place if garment_id exists, otherwise appends."""
     items = load_cache(user_id)
-    existing_ids = {i.get("garment_id") for i in items}
     gid = garment.get("garment_id")
-    if gid and gid not in existing_ids:
-        items.append(garment)
-        _cache_path(user_id).write_text(json.dumps(items))
+    if not gid:
+        return
 
-    # Also store embedding if present
+    updated = False
+    for i, existing in enumerate(items):
+        if existing.get("garment_id") == gid:
+            items[i] = garment
+            updated = True
+            break
+
+    if not updated:
+        items.append(garment)
+
+    _cache_path(user_id).write_text(json.dumps(items))
+
     embedding = garment.get("_embedding")
     if embedding and gid:
         save_embedding(user_id, gid, embedding)

@@ -123,9 +123,23 @@ export interface ChatSource {
   score: number | null;
 }
 
+export interface ChatWebSource {
+  title: string;
+  url: string;
+}
+
 export interface ChatResponse {
   reply: string;
   wardrobe_items_used: number;
   sources: ChatSource[];
   matches: WardrobeMatch[];
+  web_sources: ChatWebSource[];
+}
+
+export interface ChatStreamDone {
+  type: "done";
+  wardrobe_items_used: number;
+  sources: ChatSource[];
+  matches: WardrobeMatch[];
+  web_sources: ChatWebSource[];
 }
