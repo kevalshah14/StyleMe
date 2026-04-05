@@ -27,8 +27,8 @@ DEFAULT_TEXT_PROMPTS: tuple[str, ...] = ("clothes",)
 
 SAM3_WEIGHTS = os.environ.get("SAM3_WEIGHTS", "sam3.pt")
 SAM3_IMG_SIZE = int(os.environ.get("SAM3_IMG_SIZE", "1024"))
-# Drop detections below this score (default 70%).
-MIN_CONFIDENCE = max(0.01, min(0.999, float(os.environ.get("SAM3_MIN_CONFIDENCE", "0.70"))))
+# Drop detections below this score (default 60%).
+MIN_CONFIDENCE = max(0.01, min(0.999, float(os.environ.get("SAM3_MIN_CONFIDENCE", "0.60"))))
 
 _BACKEND_ROOT = Path(__file__).resolve().parent
 # Each run writes to SEGMENTS_OUTPUT_DIR/<run_id>/*.png (RGBA cutouts). Set SAVE_SEGMENTS=0 to disable.
@@ -201,15 +201,17 @@ def segment_image(
     mime_type: str | None = None,
     *,
     prompts: list[str] | None = None,
-    conf: float = 0.70,
+    conf: float = 0.60,
     annotate: bool = False,
+    write_segment_files: bool = True,
 ) -> dict[str, Any]:
     """
     Run SAM 3 text concept segmentation. Each phrase can yield multiple instances (e.g. all garments for "clothes").
 
     prompts=None → DEFAULT_TEXT_PROMPTS ("clothes",).
-    Results with confidence below MIN_CONFIDENCE (default 0.70) are omitted.
+    Results with confidence below MIN_CONFIDENCE (default 0.60) are omitted.
     annotate=True runs Gemini on segment crops (requires GEMINI_API_KEY); see gemini_annotator.py.
+    write_segment_files=False skips PNG exports and segments.json (for callers that only need in-memory masks).
     """
     _ = mime_type
     text_prompts: list[str] = list(prompts) if prompts else list(DEFAULT_TEXT_PROMPTS)
@@ -283,7 +285,7 @@ def segment_image(
             }
         )
 
-    segments_dir = _persist_segment_files(im, items_out)
+    segments_dir: str | None = _persist_segment_files(im, items_out) if write_segment_files else None
 
     gemini_model: str | None = None
     gemini_annotation_error: str | None = None

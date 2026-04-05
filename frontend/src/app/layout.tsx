@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "StyleMe — SAM 3",
-  description: "Text-prompted concept segmentation with Meta SAM 3 (Ultralytics)",
+  description: "Clothing segmentation with Meta SAM 3 (Ultralytics) and optional try-on",
 };
 
 export default function RootLayout({

@@ -148,8 +148,7 @@ async function drawBaseOnly(canvas: HTMLCanvasElement, imageSrc: string): Promis
 export default function SegmentPlayground() {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [promptText, setPromptText] = useState("");
-  const [conf, setConf] = useState(0.7);
+  const [conf, setConf] = useState(0.6);
   const [annotateGemini, setAnnotateGemini] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -195,7 +194,7 @@ export default function SegmentPlayground() {
     try {
       const body = new FormData();
       body.append("file", file);
-      body.append("prompts", promptText.trim());
+      body.append("prompts", "");
       body.append("conf", String(conf));
       body.append("annotate", annotateGemini ? "true" : "false");
 
@@ -224,13 +223,12 @@ export default function SegmentPlayground() {
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-10">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          Segment by text (SAM 3)
+          Segment clothing (SAM 3)
         </h1>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Use noun phrases — e.g. <span className="italic">clothes</span> — and SAM 3 segments{" "}
-          <strong>all</strong> matching instances. Multiple phrases (comma-separated) are separate concepts. Empty field
-          defaults to &quot;clothes&quot;. Requires local <code className="text-xs">sam3.pt</code> (see{" "}
-          <code className="text-xs">docs/SAM3.md</code>).
+          SAM 3 runs with the fixed text concept <span className="italic">clothes</span> and segments{" "}
+          <strong>all</strong> matching garment instances in the image. Requires local <code className="text-xs">sam3.pt</code>{" "}
+          (see <code className="text-xs">docs/SAM3.md</code>).
         </p>
       </header>
 
@@ -253,32 +251,14 @@ export default function SegmentPlayground() {
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label htmlFor="prompts" className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            What to find
-          </label>
-          <textarea
-            id="prompts"
-            name="prompts"
-            rows={3}
-            placeholder="e.g. clothes — or jacket, pants, shoes"
-            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
-            value={promptText}
-            onChange={(e) => setPromptText(e.target.value)}
-          />
-          <p className="text-xs text-zinc-500">
-            Comma or newline separated noun phrases. Empty = &quot;clothes&quot;.
-          </p>
-        </div>
-
         <div className="flex flex-col gap-1 sm:max-w-xs">
           <label htmlFor="conf" className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            SAM 3 score threshold: {conf.toFixed(2)} (results under 0.70 are never returned)
+            SAM 3 score threshold: {conf.toFixed(2)} (results under 0.60 are never returned)
           </label>
           <input
             id="conf"
             type="range"
-            min={0.7}
+            min={0.6}
             max={0.99}
             step={0.01}
             value={conf}
@@ -335,7 +315,7 @@ export default function SegmentPlayground() {
             Detections ({result.items.length})
           </h2>
           <p className="text-xs text-zinc-500">
-            Prompts: {result.prompts.join(", ")}
+            Concept: {result.prompts.join(", ")}
             {typeof result.min_confidence === "number"
               ? ` — min score ${result.min_confidence}`
               : null}
