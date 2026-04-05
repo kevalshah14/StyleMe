@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { getUser } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressBar } from "./ProgressBar";
 import { StepAuth } from "./StepAuth";
@@ -37,10 +38,15 @@ export function OnboardingFlow({ onComplete, initialStep = "auth" }: OnboardingF
   }, []);
 
   const handleReturningUser = useCallback(() => {
-    // Returning user who already onboarded — reload to pick up stored session
-    // The AuthProvider will detect the onboarded flag and stored user
-    window.location.reload();
-  }, []);
+    // Returning user who already onboarded — restore from localStorage
+    const storedUser = getUser();
+    if (storedUser) {
+      onComplete(storedUser);
+    } else {
+      // Fallback: no stored user data, start onboarding from name step
+      setStep("name");
+    }
+  }, [onComplete]);
 
   const handleNameNext = useCallback((name: string) => {
     setDisplayName(name);

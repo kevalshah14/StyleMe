@@ -4,11 +4,12 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { PhotoDropzone } from "./PhotoDropzone";
 import { onboard } from "@/lib/api";
+import { setOnboarded } from "@/lib/auth";
 import type { User } from "@/lib/types";
 
 type StepSelfieProps = {
   file: File | null;
-  onFileSelect: (file: File) => void;
+  onFileSelect: (file: File | null) => void;
   displayName: string;
   fullBodyFile: File;
   onComplete: (user: User) => void;
@@ -30,7 +31,7 @@ export function StepSelfie({
     setLoading(true);
     try {
       const user = await onboard(displayName, fullBodyFile, file);
-      localStorage.setItem("styleme_onboarded", "true");
+      setOnboarded();
       onComplete(user);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Setup failed. Please try again.");

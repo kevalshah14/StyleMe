@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type PhotoDropzoneProps = {
-  onFileSelect: (file: File) => void;
+  onFileSelect: (file: File | null) => void;
   file: File | null;
   label: string;
   description: string;
@@ -16,14 +16,22 @@ export function PhotoDropzone({ onFileSelect, file, label, description }: PhotoD
   const [dragOver, setDragOver] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
 
+  // Revoke object URL on cleanup or when preview changes
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
+
   const handleFile = useCallback(
     (f: File) => {
       if (!f.type.startsWith("image/")) return;
       onFileSelect(f);
+      if (preview) URL.revokeObjectURL(preview);
       const url = URL.createObjectURL(f);
       setPreview(url);
     },
-    [onFileSelect]
+    [onFileSelect, preview]
   );
 
   const handleDrop = useCallback(
@@ -60,8 +68,9 @@ export function PhotoDropzone({ onFileSelect, file, label, description }: PhotoD
           size="sm"
           type="button"
           onClick={() => {
+            if (preview) URL.revokeObjectURL(preview);
             setPreview(null);
-            onFileSelect(null as unknown as File);
+            onFileSelect(null);
             if (inputRef.current) inputRef.current.value = "";
           }}
         >

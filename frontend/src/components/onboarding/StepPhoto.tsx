@@ -5,7 +5,7 @@ import { PhotoDropzone } from "./PhotoDropzone";
 
 type StepPhotoProps = {
   file: File | null;
-  onFileSelect: (file: File) => void;
+  onFileSelect: (file: File | null) => void;
   onNext: () => void;
 };
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
+import { isOnboarded as checkOnboarded } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -66,8 +67,7 @@ export function StepAuth({ onAuthenticated, onReturningUser }: StepAuthProps) {
         return;
       }
       // Check if returning user (already onboarded)
-      const isOnboarded = typeof window !== "undefined" && localStorage.getItem("styleme_onboarded") === "true";
-      if (isOnboarded) {
+      if (checkOnboarded()) {
         onReturningUser();
       } else {
         onAuthenticated();
