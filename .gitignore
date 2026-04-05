@@ -27,6 +27,15 @@ backend/data/
 # InsightFace ONNX weights (downloaded on first use)
 backend/.insightface/
 
+# Model weights (large)
+*.pt
+*.pth
+*.bin
+*.safetensors
+
+# Segment outputs
+backend/segments/
+
 # IDE
 .vscode/
 .idea/

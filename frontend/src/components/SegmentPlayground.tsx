@@ -45,6 +45,40 @@ type SegmentResponse = {
   matcher?: MatcherMeta;
 };
 
+type IngestResult = {
+  message: string;
+  segments_found: number;
+  items_saved: number;
+  items: {
+    garment_id: string;
+    garment_type: string;
+    primary_color: string;
+    description: string;
+    confidence: number;
+    body_region: string;
+    has_image: boolean;
+  }[];
+};
+
+type WardrobeItem = {
+  garment_id: string;
+  garment_type: string;
+  primary_color: string;
+  description: string;
+  image_base64: string;
+  body_region?: string;
+  notable_details?: string;
+  style_tags?: string[];
+  formality_level?: number;
+  confidence?: number;
+};
+
+type ChatResponse = {
+  reply: string;
+  matches: WardrobeItem[];
+  total_wardrobe: number;
+};
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -54,7 +88,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/** HSL (h 0–360, s/l 0–100) → RGB 0–255 */
 function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   s /= 100;
   l /= 100;
@@ -66,10 +99,6 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   return [Math.round(255 * f(0)), Math.round(255 * f(8)), Math.round(255 * f(4))];
 }
 
-/**
- * Tint by mask luminance. Grayscale mask PNGs have no alpha; using destination-in
- * with drawImage makes every pixel fully opaque and paints the whole canvas (bug).
- */
 function drawMaskTintFromLuminance(
   destCtx: CanvasRenderingContext2D,
   maskImg: HTMLImageElement,
@@ -124,26 +153,19 @@ function drawBboxOutlines(ctx: CanvasRenderingContext2D, items: SegmentItem[]): 
   ctx.restore();
 }
 
-async function drawMasksAndBoxes(
-  canvas: HTMLCanvasElement,
-  imageSrc: string,
-  items: SegmentItem[],
-): Promise<void> {
+async function drawMasksAndBoxes(canvas: HTMLCanvasElement, imageSrc: string, items: SegmentItem[]): Promise<void> {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-
   const base = await loadImage(imageSrc);
   canvas.width = base.width;
   canvas.height = base.height;
   ctx.drawImage(base, 0, 0);
-
   for (let i = 0; i < items.length; i++) {
     const maskSrc = `data:image/png;base64,${items[i].mask_png}`;
     const mask = await loadImage(maskSrc);
     const hue = (i * 53 + 7) % 360;
     drawMaskTintFromLuminance(ctx, mask, canvas.width, canvas.height, hue, 0.5);
   }
-
   drawBboxOutlines(ctx, items);
 }
 
@@ -158,18 +180,38 @@ async function drawBaseOnly(canvas: HTMLCanvasElement, imageSrc: string): Promis
 
 export default function SegmentPlayground() {
   const { user, isAuthenticated } = useAuth();
+
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [conf, setConf] = useState(0.6);
-  const [annotateGemini, setAnnotateGemini] = useState(false);
+  const [promptText, setPromptText] = useState("");
+  const [conf, setConf] = useState(0.7);
+  const [annotateGemini, setAnnotateGemini] = useState(true);
   const [myClothesOnly, setMyClothesOnly] = useState(false);
   const [enrollFile, setEnrollFile] = useState<File | null>(null);
   const [enrollLoading, setEnrollLoading] = useState(false);
   const [enrollMessage, setEnrollMessage] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SegmentResponse | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const [userId, setUserId] = useState(() => {
+    if (typeof window !== "undefined") return localStorage.getItem("styleme_user_id") || "";
+    return "";
+  });
+  const [ingesting, setIngesting] = useState(false);
+  const [ingestResult, setIngestResult] = useState<IngestResult | null>(null);
+
+  const [wardrobe, setWardrobe] = useState<WardrobeItem[]>([]);
+  const [wardrobeLoading, setWardrobeLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "clusters">("clusters");
+
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatResponse, setChatResponse] = useState<ChatResponse | null>(null);
+
+  const [tab, setTab] = useState<"segment" | "wardrobe" | "chat">("segment");
 
   useEffect(() => {
     if (!file) {
@@ -186,27 +228,40 @@ export default function SegmentPlayground() {
     if (!canvas || !previewUrl) return;
     (async () => {
       try {
-        if (result?.items?.length) {
-          await drawMasksAndBoxes(canvas, previewUrl, result.items);
-        } else {
-          await drawBaseOnly(canvas, previewUrl);
-        }
+        if (result?.items?.length) await drawMasksAndBoxes(canvas, previewUrl, result.items);
+        else await drawBaseOnly(canvas, previewUrl);
       } catch {
         /* ignore */
       }
     })();
   }, [previewUrl, result]);
 
-  async function onSubmit(e: React.FormEvent) {
+  useEffect(() => {
+    if (!userId) {
+      const id = crypto.randomUUID();
+      setUserId(id);
+      localStorage.setItem("styleme_user_id", id);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (tab === "wardrobe" && userId) void loadWardrobe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: refresh when tab/userId changes
+  }, [tab, userId]);
+
+  async function onSegment(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setResult(null);
+    setIngestResult(null);
     if (!file) {
       setError("Choose an image first.");
       return;
     }
     if (myClothesOnly && !isAuthenticated) {
-      setError("Sign in first (wardrobe login) to use “My clothes only”, then enroll your face below.");
+      setError(
+        'Sign in (e.g. auth token in localStorage) to use “My clothes only”, enroll your face, then try again.',
+      );
       return;
     }
 
@@ -214,7 +269,7 @@ export default function SegmentPlayground() {
     try {
       const body = new FormData();
       body.append("file", file);
-      body.append("prompts", "");
+      body.append("prompts", promptText.trim() || "clothes");
       body.append("conf", String(conf));
       body.append("annotate", annotateGemini ? "true" : "false");
 
@@ -236,9 +291,7 @@ export default function SegmentPlayground() {
           typeof detail?.detail === "string" ? detail.detail : `Request failed (${res.status})`,
         );
       }
-
-      const data = (await res.json()) as SegmentResponse;
-      setResult(data);
+      setResult(await res.json());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -250,7 +303,7 @@ export default function SegmentPlayground() {
     e.preventDefault();
     setEnrollMessage(null);
     if (!isAuthenticated || !user?.token) {
-      setEnrollMessage("Sign in from the navbar (wardrobe login) before enrolling.");
+      setEnrollMessage("Sign in first so the API can store an embedding for your account.");
       return;
     }
     if (!enrollFile) {
@@ -270,7 +323,7 @@ export default function SegmentPlayground() {
       if (!res.ok) {
         throw new Error(typeof detail?.detail === "string" ? detail.detail : `Enroll failed (${res.status})`);
       }
-      setEnrollMessage("Face enrolled. You can run “My clothes only” on group photos.");
+      setEnrollMessage("Face enrolled. You can use “My clothes only” on group photos.");
     } catch (err) {
       setEnrollMessage(err instanceof Error ? err.message : "Enroll failed");
     } finally {
@@ -278,217 +331,501 @@ export default function SegmentPlayground() {
     }
   }
 
+  async function onSaveToWardrobe() {
+    if (!file || !result?.items?.length) return;
+    setIngesting(true);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      body.append("user_id", userId);
+      body.append("prompts", promptText.trim() || "clothes");
+      body.append("conf", String(conf));
+
+      const res = await fetch(`${API_BASE}/api/segment-and-store`, { method: "POST", body });
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => null)) as { detail?: string } | null;
+        throw new Error(typeof detail?.detail === "string" ? detail.detail : `Failed (${res.status})`);
+      }
+      const data = await res.json();
+      setIngestResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setIngesting(false);
+    }
+  }
+
+  async function loadWardrobe() {
+    if (!userId) return;
+    setWardrobeLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/wardrobe/${userId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setWardrobe(data.items || []);
+      }
+    } catch {
+      /* silent */
+    } finally {
+      setWardrobeLoading(false);
+    }
+  }
+
+  async function onChat(e: React.FormEvent) {
+    e.preventDefault();
+    if (!chatInput.trim() || !userId) return;
+    setChatLoading(true);
+    setChatResponse(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, message: chatInput.trim() }),
+      });
+      if (res.ok) setChatResponse(await res.json());
+    } catch {
+      /* silent */
+    } finally {
+      setChatLoading(false);
+    }
+  }
+
+  const tabs = [
+    { id: "segment" as const, label: "Segment & Upload" },
+    { id: "wardrobe" as const, label: `Wardrobe${wardrobe.length ? ` (${wardrobe.length})` : ""}` },
+    { id: "chat" as const, label: "Ask Wardrobe" },
+  ];
+
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-10">
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          Segment clothing (SAM 3)
-        </h1>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          SAM 3 runs with the fixed text concept <span className="italic">clothes</span> and segments{" "}
-          <strong>all</strong> matching garment instances in the image—unless you use{" "}
-          <strong>My clothes only</strong> (face enrollment + JWT). Requires local{" "}
-          <code className="text-xs">sam3.pt</code> (see <code className="text-xs">docs/SAM3.md</code>).
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">StyleMe</h1>
+        <p className="mt-1 text-sm text-zinc-500">
+          Upload a photo → SAM 3 segments clothing → optional Gemini labels → save to HydraDB → chat to find outfits.
+          Use <strong>My clothes only</strong> after face enrollment (JWT) to filter group shots.
+        </p>
+        <p className="mt-1 text-xs text-zinc-400">
+          User: <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">{userId.slice(0, 12)}...</code>
         </p>
       </header>
 
-      <section className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-900/50">
-        <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Face enrollment (optional)</h2>
-        <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-          Upload one clear selfie while signed in. InsightFace downloads ONNX weights on first use (
-          <code className="text-xs">backend/.insightface</code>).
-        </p>
-        <form onSubmit={onEnroll} className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-          <input
-            type="file"
-            accept="image/*"
-            className="block text-sm text-zinc-600 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white dark:text-zinc-400 dark:file:bg-zinc-200 dark:file:text-zinc-900"
-            onChange={(e) => setEnrollFile(e.target.files?.[0] ?? null)}
-          />
+      <div className="flex w-fit gap-1 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-800">
+        {tabs.map((t) => (
           <button
-            type="submit"
-            disabled={enrollLoading || !enrollFile}
-            className="rounded-lg bg-zinc-800 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${
+              tab === t.id
+                ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-100"
+                : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+            }`}
           >
-            {enrollLoading ? "Enrolling…" : "Save face embedding"}
+            {t.label}
           </button>
-        </form>
-        {enrollMessage ? (
-          <p className="mt-2 text-xs text-zinc-700 dark:text-zinc-300">{enrollMessage}</p>
-        ) : null}
-      </section>
+        ))}
+      </div>
 
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="image" className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            Image
-          </label>
-          <input
-            id="image"
-            name="image"
-            type="file"
-            accept="image/*"
-            className="block w-full text-sm text-zinc-600 file:mr-4 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-zinc-800 dark:text-zinc-400 dark:file:bg-zinc-100 dark:file:text-zinc-900"
-            onChange={(e) => {
-              setFile(e.target.files?.[0] ?? null);
-              setResult(null);
-              setError(null);
-            }}
-          />
-        </div>
-
-        <div className="flex flex-col gap-1 sm:max-w-xs">
-          <label htmlFor="conf" className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            SAM 3 score threshold: {conf.toFixed(2)} (results under 0.60 are never returned)
-          </label>
-          <input
-            id="conf"
-            type="range"
-            min={0.6}
-            max={0.99}
-            step={0.01}
-            value={conf}
-            onChange={(e) => setConf(Number(e.target.value))}
-            className="w-full accent-zinc-900 dark:accent-zinc-100"
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading || !file}
-          className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-        >
-          {loading
-            ? annotateGemini
-              ? "Running SAM 3 + Gemini…"
-              : "Running SAM 3…"
-            : "Segment"}
-        </button>
-
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-800 dark:text-zinc-200">
-          <input
-            type="checkbox"
-            checked={annotateGemini}
-            onChange={(e) => setAnnotateGemini(e.target.checked)}
-            className="rounded border-zinc-400 accent-zinc-900 dark:accent-zinc-100"
-          />
-          Label each segment with Gemini (needs{" "}
-          <code className="text-xs">GEMINI_API_KEY</code> on the API)
-        </label>
-
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-800 dark:text-zinc-200">
-          <input
-            type="checkbox"
-            checked={myClothesOnly}
-            onChange={(e) => setMyClothesOnly(e.target.checked)}
-            className="rounded border-zinc-400 accent-zinc-900 dark:accent-zinc-100"
-          />
-          My clothes only (group photos) — uses <code className="text-xs">/api/segment/me</code> and your enrolled face
-        </label>
-      </form>
-
-      {error ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
-          {error}
-        </p>
-      ) : null}
-
-      {previewUrl ? (
-        <div className="flex flex-col gap-3">
-          <h2 className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            {result?.items.length ? "Masks + detector boxes (dashed)" : "Preview"}
-          </h2>
-          <canvas
-            ref={canvasRef}
-            className="max-h-[70vh] w-full rounded-lg border border-zinc-200 bg-zinc-100 object-contain dark:border-zinc-700 dark:bg-zinc-900"
-          />
-        </div>
-      ) : null}
-
-      {result ? (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            Detections ({result.items.length})
-          </h2>
-          <p className="text-xs text-zinc-500">
-            Concept: {result.prompts.join(", ")}
-            {typeof result.min_confidence === "number"
-              ? ` — min score ${result.min_confidence}`
-              : null}
-          </p>
-          {result.segments_dir ? (
-            <p className="text-xs text-zinc-600 dark:text-zinc-400">
-              Saved cutouts: <code className="break-all">{result.segments_dir}</code>
-              {result.segment_manifest ? (
-                <>
-                  {" "}
-                  · manifest <code className="text-xs">{result.segment_manifest}</code>
-                </>
-              ) : null}
+      {tab === "segment" && (
+        <>
+          <section className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-900/50">
+            <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Face enrollment (optional)</h2>
+            <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+              Clear selfie while signed in. First run downloads InsightFace ONNX weights into{" "}
+              <code className="text-xs">backend/.insightface</code>.
             </p>
-          ) : null}
-          {result.gemini_model ? (
-            <p className="text-xs text-zinc-600 dark:text-zinc-400">
-              Gemini model: <code className="text-xs">{result.gemini_model}</code>
-            </p>
-          ) : null}
-          {result.gemini_annotation_error ? (
-            <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
-              Gemini annotation: {result.gemini_annotation_error}
-            </p>
-          ) : null}
-          {result.matcher ? (
-            <p className="rounded-lg border border-zinc-200 bg-zinc-100 px-2 py-1.5 text-xs text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200">
-              Face matcher: matched={String(result.matcher.matched)} · score {result.matcher.score} · faces detected{" "}
-              {result.matcher.faces_detected}
-              {result.matcher.reason ? ` · ${result.matcher.reason}` : ""}
-              {result.matcher.face_bbox ? (
-                <span className="block mt-0.5 font-mono text-[10px] opacity-90">
-                  bbox [{result.matcher.face_bbox.map((v) => Math.round(v)).join(", ")}]
-                </span>
-              ) : null}
-            </p>
-          ) : null}
-          <ul className="flex flex-col gap-2">
-            {result.items.map((item, i) => (
-              <li
-                key={`${item.category}-${i}-${item.bbox.join(",")}`}
-                className="flex flex-col gap-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            <form onSubmit={onEnroll} className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+              <input
+                type="file"
+                accept="image/*"
+                className="block text-sm text-zinc-600 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white dark:text-zinc-400 dark:file:bg-zinc-200 dark:file:text-zinc-900"
+                onChange={(e) => setEnrollFile(e.target.files?.[0] ?? null)}
+              />
+              <button
+                type="submit"
+                disabled={enrollLoading || !enrollFile}
+                className="rounded-lg bg-zinc-800 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900 dark:hover:bg-zinc-300"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-medium capitalize text-zinc-900 dark:text-zinc-100">
-                    {item.clothing?.short_label ?? item.category}
+                {enrollLoading ? "Enrolling…" : "Save face embedding"}
+              </button>
+            </form>
+            {enrollMessage ? (
+              <p className="mt-2 text-xs text-zinc-700 dark:text-zinc-300">{enrollMessage}</p>
+            ) : null}
+          </section>
+
+          <form onSubmit={onSegment} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Image</label>
+              <input
+                type="file"
+                accept="image/*"
+                className="block w-full text-sm text-zinc-600 file:mr-4 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-zinc-800 dark:text-zinc-400 dark:file:bg-zinc-100 dark:file:text-zinc-900"
+                onChange={(e) => {
+                  setFile(e.target.files?.[0] ?? null);
+                  setResult(null);
+                  setIngestResult(null);
+                  setError(null);
+                }}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-zinc-800 dark:text-zinc-200">What to find</label>
+              <textarea
+                rows={2}
+                placeholder="clothes — or jacket, pants, shoes"
+                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                value={promptText}
+                onChange={(e) => setPromptText(e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1 sm:max-w-xs">
+              <label className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                Confidence: {conf.toFixed(2)}
+              </label>
+              <input
+                type="range"
+                min={0.7}
+                max={0.99}
+                step={0.01}
+                value={conf}
+                onChange={(e) => setConf(Number(e.target.value))}
+                className="accent-zinc-900 dark:accent-zinc-100"
+              />
+            </div>
+
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-800 dark:text-zinc-200">
+              <input
+                type="checkbox"
+                checked={annotateGemini}
+                onChange={(e) => setAnnotateGemini(e.target.checked)}
+                className="rounded border-zinc-400 accent-zinc-900 dark:accent-zinc-100"
+              />
+              Label segments with Gemini (needs <code className="text-xs">GEMINI_API_KEY</code>)
+            </label>
+
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-800 dark:text-zinc-200">
+              <input
+                type="checkbox"
+                checked={myClothesOnly}
+                onChange={(e) => setMyClothesOnly(e.target.checked)}
+                className="rounded border-zinc-400 accent-zinc-900 dark:accent-zinc-100"
+              />
+              My clothes only (group photos) — <code className="text-xs">/api/segment/me</code> + enrolled face
+            </label>
+
+            <button
+              type="submit"
+              disabled={loading || !file}
+              className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+            >
+              {loading ? "Running SAM 3…" : "Segment & Label"}
+            </button>
+          </form>
+
+          {error ? (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+              {error}
+            </p>
+          ) : null}
+
+          {previewUrl ? (
+            <div className="flex flex-col gap-2">
+              <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                {result?.items.length ? `Detected ${result.items.length} clothing segments` : "Preview"}
+              </h2>
+              <canvas
+                ref={canvasRef}
+                className="max-h-[60vh] w-full rounded-lg border border-zinc-200 object-contain dark:border-zinc-700"
+              />
+            </div>
+          ) : null}
+
+          {result ? (
+            <div className="flex flex-col gap-3">
+              {result.segments_dir ? (
+                <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                  Saved cutouts: <code className="break-all">{result.segments_dir}</code>
+                  {result.segment_manifest ? (
+                    <>
+                      {" "}
+                      · manifest <code className="text-xs">{result.segment_manifest}</code>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
+              {result.gemini_annotation_error ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                  Gemini annotation: {result.gemini_annotation_error}
+                </p>
+              ) : null}
+              {result.matcher ? (
+                <p className="rounded-lg border border-zinc-200 bg-zinc-100 px-2 py-1.5 text-xs text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200">
+                  Face matcher: matched={String(result.matcher.matched)} · score {result.matcher.score} · faces{" "}
+                  {result.matcher.faces_detected}
+                  {result.matcher.reason ? ` · ${result.matcher.reason}` : ""}
+                  {result.matcher.face_bbox ? (
+                    <span className="mt-0.5 block font-mono text-[10px] opacity-90">
+                      bbox [{result.matcher.face_bbox.map((v) => Math.round(v)).join(", ")}]
+                    </span>
+                  ) : null}
+                </p>
+              ) : null}
+
+              {result.items.length > 0 ? (
+                <section className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-sm font-medium">{result.items.length} clothing items found</h2>
+                    <button
+                      type="button"
+                      onClick={onSaveToWardrobe}
+                      disabled={ingesting || !!ingestResult}
+                      className={`rounded-full px-5 py-2 text-sm font-medium transition ${
+                        ingestResult
+                          ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                          : "bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                      }`}
+                    >
+                      {ingesting
+                        ? "Embedding & saving…"
+                        : ingestResult
+                          ? `Saved ${ingestResult.items_saved} items!`
+                          : "Save to Wardrobe (HydraDB)"}
+                    </button>
+                  </div>
+
+                  {ingestResult ? (
+                    <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm dark:border-green-800 dark:bg-green-950">
+                      <p className="font-medium text-green-800 dark:text-green-200">{ingestResult.message}</p>
+                      <ul className="mt-2 space-y-1">
+                        {ingestResult.items.map((it) => (
+                          <li key={it.garment_id} className="text-xs text-green-700 dark:text-green-300">
+                            {it.garment_type} ({it.primary_color}) — {it.description.slice(0, 60)}...
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  <ul className="flex flex-col gap-2">
+                    {result.items.map((item, i) => (
+                      <li
+                        key={`${i}-${item.category}-${item.bbox.join(",")}`}
+                        className="flex flex-col gap-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium capitalize">{item.clothing?.short_label ?? item.category}</span>
+                          <span className="text-zinc-500">score {item.confidence}</span>
+                        </div>
+                        {item.clothing ? (
+                          <div className="text-xs text-zinc-600 dark:text-zinc-300">
+                            {item.clothing.garment_type} — {item.clothing.body_region}
+                            {item.clothing.notable_details ? (
+                              <span className="block text-zinc-400">{item.clothing.notable_details}</span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : (
+                <p className="text-sm text-zinc-500">
+                  No segments in the response (try lowering confidence or check face match if using “My clothes only”).
+                </p>
+              )}
+            </div>
+          ) : null}
+        </>
+      )}
+
+      {tab === "wardrobe" && (
+        <section className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold">Your Wardrobe ({wardrobe.length} items)</h2>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setViewMode(viewMode === "grid" ? "clusters" : "grid")}
+                className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              >
+                {viewMode === "grid" ? "Show Clusters" : "Show Grid"}
+              </button>
+              <button
+                type="button"
+                onClick={loadWardrobe}
+                disabled={wardrobeLoading}
+                className="text-sm text-blue-600 hover:underline disabled:opacity-50"
+              >
+                {wardrobeLoading ? "Loading..." : "Refresh"}
+              </button>
+            </div>
+          </div>
+
+          {wardrobe.length === 0 && !wardrobeLoading ? (
+            <p className="py-8 text-center text-sm text-zinc-500">
+              No items yet. Upload a photo in the Segment tab and save to wardrobe.
+            </p>
+          ) : null}
+
+          {viewMode === "clusters" && wardrobe.length > 0
+            ? (() => {
+                const clusters: Record<string, WardrobeItem[]> = {};
+                wardrobe.forEach((item) => {
+                  const c = ((item as Record<string, unknown>).cluster as string) || "other";
+                  (clusters[c] ||= []).push(item);
+                });
+                return Object.entries(clusters).map(([cid, items]) => (
+                  <div key={cid} className="flex flex-col gap-2">
+                    <h3 className="border-b border-zinc-200 pb-1 text-sm font-semibold capitalize text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
+                      {((items[0] as Record<string, unknown>).cluster_label as string) || cid} ({items.length})
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                      {items.map((item) => (
+                        <WardrobeCard key={item.garment_id} item={item} />
+                      ))}
+                    </div>
+                  </div>
+                ));
+              })()
+            : null}
+
+          {viewMode === "grid" && wardrobe.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+              {wardrobe.map((item) => (
+                <WardrobeCard key={item.garment_id} item={item} />
+              ))}
+            </div>
+          ) : null}
+        </section>
+      )}
+
+      {tab === "chat" && (
+        <section className="flex flex-col gap-4">
+          <h2 className="text-lg font-semibold">Ask Your Wardrobe</h2>
+          <p className="text-sm text-zinc-500">
+            Describe what you need and see matching items from your wardrobe with images.
+          </p>
+
+          <form onSubmit={onChat} className="flex gap-2">
+            <input
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="e.g. blue shirt for dinner, warm jacket, formal pants..."
+              className="flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+            />
+            <button
+              type="submit"
+              disabled={chatLoading || !chatInput.trim()}
+              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+            >
+              {chatLoading ? "Searching..." : "Search"}
+            </button>
+          </form>
+
+          {chatResponse ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-zinc-700 dark:text-zinc-300">{chatResponse.reply}</p>
+              <p className="text-xs text-zinc-400">
+                {chatResponse.matches.length} matches from {chatResponse.total_wardrobe} total items
+                {String((chatResponse as Record<string, unknown>).search_method || "") !== "" ? (
+                  <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                    {String((chatResponse as Record<string, unknown>).search_method)}
                   </span>
-                  <span className="text-zinc-600 dark:text-zinc-400">score {item.confidence}</span>
-                </div>
-                {item.clothing ? (
-                  <div className="text-xs text-zinc-600 dark:text-zinc-300">
-                    <span className="font-medium text-zinc-800 dark:text-zinc-100">Gemini: </span>
-                    {item.clothing.garment_type}
-                    <span className="text-zinc-500 dark:text-zinc-400"> — {item.clothing.body_region}</span>
-                    {item.clothing.notable_details ? (
-                      <span className="mt-0.5 block text-zinc-500 dark:text-zinc-400">
-                        {item.clothing.notable_details}
+                ) : null}
+              </p>
+
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {chatResponse.matches.map((item) => (
+                  <div
+                    key={item.garment_id}
+                    className="relative overflow-hidden rounded-xl border border-blue-200 bg-white dark:border-blue-800 dark:bg-zinc-900"
+                  >
+                    {item.image_base64 ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.image_base64}
+                        alt={item.garment_type}
+                        className="aspect-square w-full bg-zinc-100 object-contain dark:bg-zinc-800"
+                      />
+                    ) : (
+                      <div className="flex aspect-square w-full items-center justify-center bg-zinc-100 text-xs text-zinc-400 dark:bg-zinc-800">
+                        No image
+                      </div>
+                    )}
+                    {(item as Record<string, unknown>).score != null ? (
+                      <span className="absolute right-1 top-1 rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                        {((item as Record<string, unknown>).score as number).toFixed(2)}
                       </span>
                     ) : null}
-                    <span className="mt-0.5 block text-zinc-500 dark:text-zinc-400">
-                      SAM concept: {item.category}
-                    </span>
+                    <div className="p-2">
+                      <p className="truncate text-sm font-medium capitalize">{item.garment_type}</p>
+                      <p className="text-xs text-zinc-500">{item.primary_color}</p>
+                      {String((item as Record<string, unknown>).cluster_label || "") !== "" ? (
+                        <span className="mt-0.5 inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-500 dark:bg-zinc-800">
+                          {String((item as Record<string, unknown>).cluster_label)}
+                        </span>
+                      ) : null}
+                      {item.description ? (
+                        <p className="mt-1 line-clamp-2 text-xs text-zinc-400">{item.description}</p>
+                      ) : null}
+                    </div>
                   </div>
-                ) : null}
-                <code className="text-xs text-zinc-500 dark:text-zinc-400">
-                  bbox [x1, y1, x2, y2] = [{item.bbox.map((v) => Math.round(v)).join(", ")}]
-                </code>
-                {item.segment_file ? (
-                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                    file: {item.segment_file}
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {!chatResponse && !chatLoading ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {["blue shirt", "formal outfit", "warm jacket", "casual pants", "summer clothes"].map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => setChatInput(q)}
+                  className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </section>
-      ) : null}
+      )}
+    </div>
+  );
+}
+
+function WardrobeCard({ item }: { item: WardrobeItem }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900">
+      {item.image_base64 ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={item.image_base64}
+          alt={item.garment_type}
+          className="aspect-square w-full bg-zinc-100 object-contain dark:bg-zinc-800"
+        />
+      ) : (
+        <div className="flex aspect-square w-full items-center justify-center bg-zinc-100 text-xs text-zinc-400 dark:bg-zinc-800">
+          No image
+        </div>
+      )}
+      <div className="p-2">
+        <p className="truncate text-sm font-medium capitalize">{item.garment_type}</p>
+        <div className="mt-0.5 flex items-center gap-1.5">
+          {item.primary_color ? <span className="text-xs text-zinc-500">{item.primary_color}</span> : null}
+          {String((item as Record<string, unknown>).cluster_label || "") !== "" ? (
+            <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-400 dark:bg-zinc-800">
+              {String((item as Record<string, unknown>).cluster_label)}
+            </span>
+          ) : null}
+        </div>
+        {item.description ? <p className="mt-1 line-clamp-2 text-xs text-zinc-400">{item.description}</p> : null}
+      </div>
     </div>
   );
 }
