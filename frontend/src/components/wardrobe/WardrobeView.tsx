@@ -20,7 +20,9 @@ export type WardrobeItem = {
   confidence?: number;
 };
 
-function WardrobeCard({ item }: { item: WardrobeItem }) {
+function WardrobeCard({ item, onDelete }: { item: WardrobeItem; onDelete?: (id: string) => void }) {
+  const [confirming, setConfirming] = useState(false);
+
   return (
     <div className="neo-card-interactive group overflow-hidden">
       <div className="relative">
@@ -45,20 +47,53 @@ function WardrobeCard({ item }: { item: WardrobeItem }) {
             {item.primary_color}
           </span>
         )}
-      </div>
-      <div className="p-3">
-        <p className="truncate text-sm font-bold capitalize text-neo-ink">{item.garment_type}</p>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          {String((item as Record<string, unknown>).cluster_label || "") !== "" && (
-            <span className="rounded-md bg-neo-bg px-1.5 py-0.5 text-[10px] font-bold text-neo-mute">
-              {String((item as Record<string, unknown>).cluster_label)}
-            </span>
-          )}
-        </div>
-        {item.description && (
-          <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-neo-mute">{item.description}</p>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setConfirming(true); }}
+            className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-lg border-2 border-neo-border bg-neo-surface text-neo-mute opacity-0 shadow-[2px_2px_0_0_var(--neo-shadow)] transition-all hover:bg-neo-accent hover:text-white group-hover:opacity-100"
+            aria-label="Delete"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4h6v2" />
+            </svg>
+          </button>
         )}
       </div>
+
+      {confirming ? (
+        <div className="flex items-center gap-2 p-3">
+          <span className="text-[11px] font-bold text-neo-ink">Delete?</span>
+          <button
+            type="button"
+            onClick={() => { onDelete?.(item.garment_id); setConfirming(false); }}
+            className="rounded-md border-2 border-neo-border bg-neo-accent px-2 py-0.5 text-[10px] font-bold text-white shadow-[2px_2px_0_0_var(--neo-shadow)]"
+          >
+            Yes
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirming(false)}
+            className="rounded-md border-2 border-neo-border bg-neo-surface px-2 py-0.5 text-[10px] font-bold text-neo-ink shadow-[2px_2px_0_0_var(--neo-shadow)]"
+          >
+            No
+          </button>
+        </div>
+      ) : (
+        <div className="p-3">
+          <p className="truncate text-sm font-bold capitalize text-neo-ink">{item.garment_type}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            {String((item as Record<string, unknown>).cluster_label || "") !== "" && (
+              <span className="rounded-md bg-neo-bg px-1.5 py-0.5 text-[10px] font-bold text-neo-mute">
+                {String((item as Record<string, unknown>).cluster_label)}
+              </span>
+            )}
+          </div>
+          {item.description && (
+            <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-neo-mute">{item.description}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -149,6 +184,15 @@ export function WardrobeView() {
   useEffect(() => {
     if (userId) loadWardrobe();
   }, [userId, loadWardrobe]);
+
+  async function deleteItem(garmentId: string) {
+    try {
+      const res = await fetch(`${API_BASE}/api/wardrobe/${userId}/${garmentId}`, { method: "DELETE" });
+      if (res.ok) {
+        setWardrobe((prev) => prev.filter((it) => it.garment_id !== garmentId));
+      }
+    } catch { /* silent */ }
+  }
 
   const filtered = search.trim()
     ? wardrobe.filter(
@@ -319,7 +363,7 @@ export function WardrobeView() {
                 </div>
                 <div className="stagger-grid grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                   {items.map((item) => (
-                    <WardrobeCard key={item.garment_id} item={item} />
+                    <WardrobeCard key={item.garment_id} item={item} onDelete={deleteItem} />
                   ))}
                 </div>
               </section>
@@ -330,7 +374,7 @@ export function WardrobeView() {
         {viewMode === "grid" && filtered.length > 0 && (
           <div className="stagger-grid grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {filtered.map((item) => (
-              <WardrobeCard key={item.garment_id} item={item} />
+              <WardrobeCard key={item.garment_id} item={item} onDelete={deleteItem} />
             ))}
           </div>
         )}

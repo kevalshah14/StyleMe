@@ -54,7 +54,7 @@ async def scrape_clothing(image_base64: str) -> GarmentExtracted:
     image_bytes = base64.b64decode(image_base64)
 
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.1-flash-lite-preview",
         contents=[
             types.Content(
                 parts=[

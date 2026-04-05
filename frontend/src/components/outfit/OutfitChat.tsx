@@ -24,6 +24,7 @@ type ChatMsg = {
   tryOnImage?: string;
   tryOnLoading?: boolean;
   tryOnError?: string;
+  selectedIds?: Set<string>;
 };
 
 const SUGGESTIONS = [
@@ -98,7 +99,7 @@ export function OutfitChat() {
         setLoading(false);
 
         if (matches.length > 0) {
-          triggerTryOn(msgIndex, matches);
+          triggerTryOn(msgIndex, matches, trimmed);
         }
         return;
       } else {
@@ -118,19 +119,22 @@ export function OutfitChat() {
     }
   }
 
-  async function triggerTryOn(msgIndex: number, matches: WardrobeItem[]) {
+  async function triggerTryOn(msgIndex: number, matches: WardrobeItem[], query: string) {
     try {
       const garmentIds = matches.map((m) => m.garment_id);
       const res = await fetch(`${API_BASE}/api/try-on/wardrobe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, garment_ids: garmentIds }),
+        body: JSON.stringify({ user_id: userId, garment_ids: garmentIds, query }),
       });
       if (res.ok) {
         const data = await res.json();
+        const selectedIds = new Set<string>(data.selected_garment_ids ?? garmentIds);
         setMessages((prev) =>
           prev.map((m, i) =>
-            i === msgIndex ? { ...m, tryOnImage: data.generated_image, tryOnLoading: false } : m,
+            i === msgIndex
+              ? { ...m, tryOnImage: data.generated_image, tryOnLoading: false, selectedIds }
+              : m,
           ),
         );
       } else {
@@ -289,37 +293,42 @@ export function OutfitChat() {
                       </div>
                     )}
 
-                    {/* Matched garment cards */}
+                    {/* Matched garment cards — selected pieces highlighted */}
                     <div className="stagger-grid grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                      {msg.matches.map((item) => (
-                        <div key={item.garment_id} className="neo-card-interactive overflow-hidden">
-                          {item.image_base64 ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={item.image_base64}
-                              alt={item.garment_type}
-                              className="aspect-square w-full bg-neo-bg object-contain"
-                            />
-                          ) : (
-                            <div className="flex aspect-square w-full items-center justify-center bg-neo-bg">
-                              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-neo-mute/40">
-                                <rect x="3" y="3" width="18" height="18" rx="2" />
-                                <circle cx="8.5" cy="8.5" r="1.5" />
-                                <path d="m21 15-5-5L5 21" />
-                              </svg>
+                      {msg.matches
+                        .filter((item) => !msg.selectedIds || msg.selectedIds.has(item.garment_id))
+                        .map((item) => {
+                        const isSelected = !msg.selectedIds || msg.selectedIds.has(item.garment_id);
+                        return (
+                          <div key={item.garment_id} className={`neo-card-interactive overflow-hidden ${isSelected ? "" : "opacity-40"}`}>
+                            {item.image_base64 ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={item.image_base64}
+                                alt={item.garment_type}
+                                className="aspect-square w-full bg-neo-bg object-contain"
+                              />
+                            ) : (
+                              <div className="flex aspect-square w-full items-center justify-center bg-neo-bg">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-neo-mute/40">
+                                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                                  <circle cx="8.5" cy="8.5" r="1.5" />
+                                  <path d="m21 15-5-5L5 21" />
+                                </svg>
+                              </div>
+                            )}
+                            <div className="p-2.5">
+                              <p className="truncate text-xs font-bold capitalize text-neo-ink">
+                                {item.garment_type}
+                              </p>
+                              <p className="text-[10px] font-medium text-neo-mute">{item.primary_color}</p>
                             </div>
-                          )}
-                          <div className="p-2.5">
-                            <p className="truncate text-xs font-bold capitalize text-neo-ink">
-                              {item.garment_type}
-                            </p>
-                            <p className="text-[10px] font-medium text-neo-mute">{item.primary_color}</p>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-neo-mute">
-                      {msg.matches.length} piece{msg.matches.length === 1 ? "" : "s"} from your wardrobe
+                      {msg.selectedIds ? msg.selectedIds.size : msg.matches.length} piece{(msg.selectedIds ? msg.selectedIds.size : msg.matches.length) === 1 ? "" : "s"} selected for outfit
                     </p>
                   </div>
                 )}
