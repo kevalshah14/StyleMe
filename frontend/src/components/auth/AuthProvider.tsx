@@ -46,7 +46,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setNeedsOnboarding(false);
   }, []);
 
-  // Check auth state on mount and when session changes
   useEffect(() => {
     if (sessionLoading) return;
 
@@ -54,21 +53,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const storedUser = getUser();
     const onboarded = isOnboarded();
 
-    if (session && onboarded && token && storedUser?.token === token && storedUser.user_id) {
-      // Returning user: has Better Auth session + completed onboarding + valid FastAPI token
+    if (onboarded && token && storedUser?.user_id) {
+      // Returning user: has completed onboarding and has a stored FastAPI token.
+      // Restore regardless of Better Auth session state (session cookie may expire
+      // independently of the FastAPI JWT).
       setUserState(storedUser);
       setReady(true);
     } else if (session && !onboarded) {
-      // Has Better Auth session but hasn't completed onboarding
+      // Has Better Auth session but hasn't completed onboarding yet
       setNeedsOnboarding(true);
       setReady(true);
-    } else if (!session && onboarded && token && storedUser?.token === token && storedUser.user_id) {
-      // Has localStorage data but no Better Auth session — treat as authenticated
-      // (Better Auth session may have expired but FastAPI token is still valid)
-      setUserState(storedUser);
-      setReady(true);
     } else {
-      // No session, no stored user — needs full onboarding
+      // No stored credentials — needs full onboarding
       setNeedsOnboarding(true);
       setReady(true);
     }
@@ -89,7 +85,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               Style<span className="text-neo-accent">Me</span>
             </p>
             <div className="h-1 w-16 overflow-hidden bg-neo-bg">
-              <div className="h-full w-full bg-linear-to-r from-neo-accent via-neo-yellow to-neo-blue animate-gradient" />
+              <div
+                className="h-full w-full animate-gradient"
+                style={{ background: "linear-gradient(to right, var(--neo-accent), var(--neo-yellow), var(--neo-blue))", backgroundSize: "200% 200%" }}
+              />
             </div>
           </div>
         </div>

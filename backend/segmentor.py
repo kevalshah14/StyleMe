@@ -8,6 +8,7 @@ Weights: download `sam3.pt` from Hugging Face (facebook/sam3) after access appro
 from __future__ import annotations
 
 import base64
+import gc
 import io
 import json
 import os
@@ -23,13 +24,10 @@ from PIL import Image
 from ultralytics.models.sam import SAM3SemanticPredictor
 
 MAX_TEXT_PROMPTS = 16
-DEFAULT_TEXT_PROMPTS: tuple[str, ...] = (
-    "shirt", "t-shirt", "pants", "jeans", "shorts", "jacket", "coat",
-    "hoodie", "sweater", "dress", "skirt", "shoes", "sneakers", "hat", "bag",
-)
+DEFAULT_TEXT_PROMPTS: tuple[str, ...] = ("clothes",)
 
 SAM3_WEIGHTS = os.environ.get("SAM3_WEIGHTS", "sam3.pt")
-SAM3_IMG_SIZE = int(os.environ.get("SAM3_IMG_SIZE", "1024"))
+SAM3_IMG_SIZE = int(os.environ.get("SAM3_IMG_SIZE", "640"))
 # Drop detections below this score (default 60%).
 MIN_CONFIDENCE = max(0.01, min(0.999, float(os.environ.get("SAM3_MIN_CONFIDENCE", "0.60"))))
 
@@ -78,6 +76,7 @@ def _get_predictor(conf: float) -> SAM3SemanticPredictor:
                 "Request access at https://huggingface.co/facebook/sam3 then download sam3.pt "
                 "or set SAM3_WEIGHTS to the full path (see docs/SAM3.md)."
             )
+        gc.collect()
         _predictor = SAM3SemanticPredictor(
             overrides=dict(
                 conf=conf,
@@ -223,9 +222,18 @@ def segment_image(
 
     im = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     w, h = im.size
+
+    max_dim = max(w, h)
+    cap = SAM3_IMG_SIZE * 2
+    if max_dim > cap:
+        scale = cap / max_dim
+        im = im.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
+        w, h = im.size
+
     rgb = np.asarray(im, dtype=np.uint8)
     im_bgr = rgb[:, :, ::-1].copy()
 
+    gc.collect()
     with _predictor_lock:
         predictor = _get_predictor(conf=model_conf)
         results = predictor(source=im_bgr, text=text_prompts)
@@ -374,9 +382,18 @@ def run_sam_clothes_only(
 
     im = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     w, h = im.size
+
+    max_dim = max(w, h)
+    cap = SAM3_IMG_SIZE * 2
+    if max_dim > cap:
+        scale = cap / max_dim
+        im = im.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
+        w, h = im.size
+
     rgb = np.asarray(im, dtype=np.uint8)
     im_bgr = rgb[:, :, ::-1].copy()
 
+    gc.collect()
     with _predictor_lock:
         predictor = _get_predictor(conf=model_conf)
         results = predictor(source=im_bgr, text=text_prompts)

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
-const DEFAULT_PROMPTS = "shirt,t-shirt,pants,jeans,shorts,jacket,coat,hoodie,sweater,dress,skirt,shoes,sneakers,hat,bag";
+const DEFAULT_PROMPTS = "clothes";
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
