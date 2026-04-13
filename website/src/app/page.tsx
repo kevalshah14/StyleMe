@@ -246,119 +246,109 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* App mockup: Chat Stylist view */}
-      <section className="px-5 pb-10 sm:px-8">
+      {/* App mockup: Combined Chat view */}
+      <section className="px-5 pb-20 sm:px-8">
         <div className="mx-auto max-w-3xl scroll-reveal">
           <BrowserFrame url="styleme.app/chat">
             <MockNav active="chat" />
-            <div className="bg-neo-bg p-4" style={{ backgroundImage: "linear-gradient(90deg, color-mix(in srgb, var(--neo-border) 4%, transparent) 1px, transparent 1px), linear-gradient(180deg, color-mix(in srgb, var(--neo-border) 4%, transparent) 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
-              {/* User message */}
-              <div className="mb-3 flex justify-end">
-                <div className="flex items-start gap-2">
-                  <div className="border-2 border-neo-border bg-neo-yellow-soft px-3 py-2 shadow-[2px_2px_0_0_var(--neo-shadow)]">
-                    <p className="text-[10px] font-bold text-neo-ink">Style me for a summer brunch</p>
-                  </div>
-                  <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-neo-border bg-neo-yellow shadow-[1px_1px_0_0_var(--neo-shadow)]">
-                    <span className="text-[8px] font-black text-neo-ink">U</span>
-                  </div>
-                </div>
-              </div>
-              {/* AI message */}
-              <div className="mb-3 flex justify-start">
-                <div className="flex items-start gap-2">
-                  <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center border-2 border-neo-border bg-neo-accent shadow-[1px_1px_0_0_var(--neo-shadow)]">
-                    <HangerIcon size={14} className="text-white" />
-                  </div>
-                  <div className="max-w-[280px] border-2 border-neo-border bg-neo-surface px-3 py-2 shadow-[2px_2px_0_0_var(--neo-shadow)]">
-                    <p className="text-[10px] font-medium text-neo-ink">Here&apos;s a breezy outfit from your wardrobe! I picked your <strong className="font-extrabold">linen shirt</strong>, <strong className="font-extrabold">chino shorts</strong>, and <strong className="font-extrabold">white sneakers</strong> for a relaxed brunch vibe.</p>
-                    <div className="mt-1 flex items-center gap-1">
-                      <div className="h-1 w-1 rounded-full bg-neo-accent animate-pulse-soft" />
-                      <span className="text-[7px] font-extrabold uppercase tracking-widest text-neo-mute">Streamed live</span>
+            <div className="flex flex-col">
+              <div className="max-h-[420px] overflow-y-auto bg-neo-bg p-4" style={{ backgroundImage: "linear-gradient(90deg, color-mix(in srgb, var(--neo-border) 4%, transparent) 1px, transparent 1px), linear-gradient(180deg, color-mix(in srgb, var(--neo-border) 4%, transparent) 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
+
+                {/* Conversation 1: Outfit from wardrobe */}
+                <div className="mb-3 flex justify-end">
+                  <div className="flex items-start gap-2">
+                    <div className="border-2 border-neo-border bg-neo-yellow-soft px-3 py-2 shadow-[2px_2px_0_0_var(--neo-shadow)]">
+                      <p className="text-[10px] font-bold text-neo-ink">Style me for a summer brunch</p>
+                    </div>
+                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-neo-border bg-neo-yellow shadow-[1px_1px_0_0_var(--neo-shadow)]">
+                      <span className="text-[8px] font-black text-neo-ink">U</span>
                     </div>
                   </div>
                 </div>
-              </div>
-              {/* Garment match cards */}
-              <div className="ml-8 grid grid-cols-3 gap-2">
-                {[
-                  { bg: "bg-neo-cyan-soft", label: "Linen Shirt", tag: "Upper" },
-                  { bg: "bg-neo-yellow-soft", label: "Chino Shorts", tag: "Lower" },
-                  { bg: "bg-neo-pink-soft", label: "White Sneakers", tag: "Shoes" },
-                ].map((item, i) => (
-                  <div key={i} className="border-2 border-neo-border bg-neo-surface shadow-[2px_2px_0_0_var(--neo-shadow)]">
-                    <div className={`aspect-square w-full ${item.bg} texture-crosshatch`} />
-                    <div className="border-t border-neo-border p-1.5">
-                      <div className="text-[7px] font-extrabold uppercase text-neo-ink">{item.label}</div>
-                      <div className="mt-0.5 text-[6px] font-bold uppercase text-neo-mute">{item.tag}</div>
+                <div className="mb-3 flex justify-start">
+                  <div className="flex items-start gap-2">
+                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center border-2 border-neo-border bg-neo-accent shadow-[1px_1px_0_0_var(--neo-shadow)]">
+                      <HangerIcon size={14} className="text-white" />
+                    </div>
+                    <div className="max-w-[280px] border-2 border-neo-border bg-neo-surface px-3 py-2 shadow-[2px_2px_0_0_var(--neo-shadow)]">
+                      <p className="text-[10px] font-medium text-neo-ink">Here&apos;s a breezy outfit from your wardrobe! I picked your <strong className="font-extrabold">linen shirt</strong>, <strong className="font-extrabold">chino shorts</strong>, and <strong className="font-extrabold">white sneakers</strong> for a relaxed brunch vibe.</p>
+                      <div className="mt-1 flex items-center gap-1">
+                        <div className="h-1 w-1 rounded-full bg-neo-accent animate-pulse-soft" />
+                        <span className="text-[7px] font-extrabold uppercase tracking-widest text-neo-mute">Streamed live</span>
+                      </div>
                     </div>
                   </div>
-                ))}
+                </div>
+                <div className="ml-8 mb-5 grid grid-cols-3 gap-2">
+                  {[
+                    { bg: "bg-neo-cyan-soft", label: "Linen Shirt", tag: "Upper" },
+                    { bg: "bg-neo-yellow-soft", label: "Chino Shorts", tag: "Lower" },
+                    { bg: "bg-neo-pink-soft", label: "White Sneakers", tag: "Shoes" },
+                  ].map((item, i) => (
+                    <div key={i} className="border-2 border-neo-border bg-neo-surface shadow-[2px_2px_0_0_var(--neo-shadow)]">
+                      <div className={`aspect-square w-full ${item.bg} texture-crosshatch`} />
+                      <div className="border-t border-neo-border p-1.5">
+                        <div className="text-[7px] font-extrabold uppercase text-neo-ink">{item.label}</div>
+                        <div className="mt-0.5 text-[6px] font-bold uppercase text-neo-mute">{item.tag}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Conversation 2: Shopping from web */}
+                <div className="mb-3 flex justify-end">
+                  <div className="flex items-start gap-2">
+                    <div className="border-2 border-neo-border bg-neo-yellow-soft px-3 py-2 shadow-[2px_2px_0_0_var(--neo-shadow)]">
+                      <p className="text-[10px] font-bold text-neo-ink">Find me a good jacket under $300</p>
+                    </div>
+                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-neo-border bg-neo-yellow shadow-[1px_1px_0_0_var(--neo-shadow)]">
+                      <span className="text-[8px] font-black text-neo-ink">U</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="mb-3 flex justify-start">
+                  <div className="flex items-start gap-2">
+                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center border-2 border-neo-border bg-neo-accent shadow-[1px_1px_0_0_var(--neo-shadow)]">
+                      <HangerIcon size={14} className="text-white" />
+                    </div>
+                    <div className="max-w-[280px] border-2 border-neo-border bg-neo-surface px-3 py-2 shadow-[2px_2px_0_0_var(--neo-shadow)]">
+                      <p className="text-[10px] font-medium text-neo-ink">Here are some great jackets under $300 from the web:</p>
+                      <div className="mt-2 space-y-1.5">
+                        {[
+                          { name: "Levi's Trucker Jacket", price: "$89", site: "nordstrom.com" },
+                          { name: "Carhartt WIP Detroit Jacket", price: "$199", site: "ssense.com" },
+                          { name: "Nike Sportswear Windrunner", price: "$110", site: "nike.com" },
+                        ].map((p, i) => (
+                          <div key={i} className="flex items-center gap-2 border border-neo-border bg-neo-bg p-1.5">
+                            <div className="flex h-6 w-6 shrink-0 items-center justify-center bg-neo-blue">
+                              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" /></svg>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-[8px] font-bold text-neo-ink">{p.name}</div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[7px] font-extrabold text-neo-accent">{p.price}</span>
+                                <span className="text-[6px] text-neo-mute">{p.site}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-1">
+                        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="var(--neo-blue)" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                        <span className="text-[7px] font-extrabold uppercase tracking-widest text-neo-blue">Live web results</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
               </div>
-              {/* Composer bar */}
-              <div className="mt-4 flex gap-2">
+              {/* Composer bar — pinned below the scroll area */}
+              <div className="flex gap-2 border-t-2 border-neo-border bg-neo-bg p-3">
                 <div className="flex h-8 flex-1 items-center border-2 border-neo-border bg-neo-surface px-2 shadow-[2px_2px_0_0_var(--neo-shadow)]">
                   <span className="text-[8px] font-bold uppercase text-neo-mute" style={{ opacity: 0.4 }}>Ask your stylist anything...</span>
                 </div>
                 <div className="flex h-8 w-8 items-center justify-center border-2 border-neo-border bg-neo-accent shadow-[2px_2px_0_0_var(--neo-shadow)]">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
-                </div>
-              </div>
-            </div>
-          </BrowserFrame>
-        </div>
-      </section>
-
-      {/* App mockup: Shopping view */}
-      <section className="px-5 pb-20 sm:px-8">
-        <div className="mx-auto max-w-3xl scroll-reveal">
-          <BrowserFrame url="styleme.app/chat">
-            <MockNav active="chat" />
-            <div className="bg-neo-bg p-4" style={{ backgroundImage: "linear-gradient(90deg, color-mix(in srgb, var(--neo-border) 4%, transparent) 1px, transparent 1px), linear-gradient(180deg, color-mix(in srgb, var(--neo-border) 4%, transparent) 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
-              {/* User message */}
-              <div className="mb-3 flex justify-end">
-                <div className="flex items-start gap-2">
-                  <div className="border-2 border-neo-border bg-neo-yellow-soft px-3 py-2 shadow-[2px_2px_0_0_var(--neo-shadow)]">
-                    <p className="text-[10px] font-bold text-neo-ink">Find me a good jacket under $300</p>
-                  </div>
-                  <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-neo-border bg-neo-yellow shadow-[1px_1px_0_0_var(--neo-shadow)]">
-                    <span className="text-[8px] font-black text-neo-ink">U</span>
-                  </div>
-                </div>
-              </div>
-              {/* AI message with web results */}
-              <div className="mb-3 flex justify-start">
-                <div className="flex items-start gap-2">
-                  <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center border-2 border-neo-border bg-neo-accent shadow-[1px_1px_0_0_var(--neo-shadow)]">
-                    <HangerIcon size={14} className="text-white" />
-                  </div>
-                  <div className="max-w-[280px] border-2 border-neo-border bg-neo-surface px-3 py-2 shadow-[2px_2px_0_0_var(--neo-shadow)]">
-                    <p className="text-[10px] font-medium text-neo-ink">Here are some great jackets under $300 from the web:</p>
-                    {/* Mock web results */}
-                    <div className="mt-2 space-y-1.5">
-                      {[
-                        { name: "Levi's Trucker Jacket", price: "$89", site: "nordstrom.com" },
-                        { name: "Carhartt WIP Detroit Jacket", price: "$199", site: "ssense.com" },
-                        { name: "Nike Sportswear Windrunner", price: "$110", site: "nike.com" },
-                      ].map((p, i) => (
-                        <div key={i} className="flex items-center gap-2 border border-neo-border bg-neo-bg p-1.5">
-                          <div className="flex h-6 w-6 shrink-0 items-center justify-center bg-neo-blue">
-                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" /></svg>
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-[8px] font-bold text-neo-ink">{p.name}</div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-[7px] font-extrabold text-neo-accent">{p.price}</span>
-                              <span className="text-[6px] text-neo-mute">{p.site}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-1.5 flex items-center gap-1">
-                      <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="var(--neo-blue)" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-                      <span className="text-[7px] font-extrabold uppercase tracking-widest text-neo-blue">Live web results</span>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
