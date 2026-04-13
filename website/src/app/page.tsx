@@ -1,4 +1,4 @@
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+import WaitlistButton from "./components/WaitlistButton";
 
 /* ── Hanger logo icon (matches the generated logo) ── */
 function HangerIcon({ size = 40, className = "" }: { size?: number; className?: string }) {
@@ -200,7 +200,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-3">
             <a href="#features" className="hidden text-xs font-extrabold uppercase tracking-wider text-neo-mute transition-colors hover:text-neo-ink sm:block">Features</a>
             <a href="#how" className="hidden text-xs font-extrabold uppercase tracking-wider text-neo-mute transition-colors hover:text-neo-ink sm:block">How it works</a>
-            <a href={APP_URL} className="neo-btn bg-neo-accent px-5 py-2 text-xs text-white">Open App</a>
+            <WaitlistButton className="neo-btn bg-neo-accent px-5 py-2 text-xs text-white">Join Waitlist</WaitlistButton>
           </div>
         </div>
       </header>
@@ -240,7 +240,7 @@ export default function LandingPage() {
           <div className="h-[3px] w-32 animate-draw-line bg-neo-accent" style={{ animationDelay: "0.5s" }} />
 
           <div className="flex flex-wrap items-center justify-center gap-4 animate-fade-in-up" style={{ animationDelay: "0.3s" }}>
-            <a href={APP_URL} className="neo-btn bg-neo-accent px-8 py-3.5 text-sm text-white sm:text-base">Get Started</a>
+            <WaitlistButton className="neo-btn bg-neo-accent px-8 py-3.5 text-sm text-white sm:text-base">Join Waitlist</WaitlistButton>
             <a href="#features" className="neo-btn bg-neo-surface px-8 py-3.5 text-sm text-neo-ink sm:text-base">See Features</a>
           </div>
         </div>
@@ -263,14 +263,14 @@ export default function LandingPage() {
                   </div>
                 </div>
               </div>
-              {/* AI message with streaming indicator */}
+              {/* AI message */}
               <div className="mb-3 flex justify-start">
                 <div className="flex items-start gap-2">
                   <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center border-2 border-neo-border bg-neo-accent shadow-[1px_1px_0_0_var(--neo-shadow)]">
                     <HangerIcon size={14} className="text-white" />
                   </div>
-                  <div className="border-2 border-neo-border bg-neo-surface px-3 py-2 shadow-[2px_2px_0_0_var(--neo-shadow)]">
-                    <p className="text-[10px] font-medium text-neo-ink">Here&apos;s a breezy outfit from your wardrobe! I picked your **linen shirt**, **chino shorts**, and **white sneakers** for a relaxed brunch vibe.</p>
+                  <div className="max-w-[280px] border-2 border-neo-border bg-neo-surface px-3 py-2 shadow-[2px_2px_0_0_var(--neo-shadow)]">
+                    <p className="text-[10px] font-medium text-neo-ink">Here&apos;s a breezy outfit from your wardrobe! I picked your <strong className="font-extrabold">linen shirt</strong>, <strong className="font-extrabold">chino shorts</strong>, and <strong className="font-extrabold">white sneakers</strong> for a relaxed brunch vibe.</p>
                     <div className="mt-1 flex items-center gap-1">
                       <div className="h-1 w-1 rounded-full bg-neo-accent animate-pulse-soft" />
                       <span className="text-[7px] font-extrabold uppercase tracking-widest text-neo-mute">Streamed live</span>
@@ -293,26 +293,6 @@ export default function LandingPage() {
                     </div>
                   </div>
                 ))}
-              </div>
-              <div className="ml-8 mt-2 flex items-center gap-2">
-                <div className="flex h-5 items-center border-2 border-neo-border bg-neo-lime px-2 shadow-[1px_1px_0_0_var(--neo-shadow)]">
-                  <span className="text-[7px] font-extrabold uppercase text-white">Try on this outfit</span>
-                </div>
-              </div>
-              {/* Try-on preview */}
-              <div className="ml-8 mt-3 border-2 border-neo-border bg-neo-surface shadow-[3px_3px_0_0_var(--neo-shadow)]">
-                <div className="flex aspect-16/10 w-full items-center justify-center bg-neo-lavender texture-crosshatch">
-                  <div className="flex flex-col items-center gap-1">
-                    <div className="h-5 w-5 rounded-full border-2 border-neo-border bg-neo-peach" />
-                    <div className="h-10 w-7 border-2 border-neo-border bg-neo-cyan-soft" />
-                    <div className="h-6 w-9 border-2 border-neo-border bg-neo-yellow-soft" />
-                    <div className="h-3 w-8 border-2 border-neo-border bg-neo-pink-soft" />
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 border-t border-neo-border px-2 py-1.5">
-                  <div className="h-2 w-2 rounded-full bg-neo-accent animate-pulse-soft" />
-                  <span className="text-[7px] font-extrabold uppercase tracking-widest text-neo-mute">Virtual try-on</span>
-                </div>
               </div>
               {/* Composer bar */}
               <div className="mt-4 flex gap-2">
@@ -427,7 +407,7 @@ export default function LandingPage() {
 
       {/* Wardrobe mockup */}
       <section className="px-5 pb-10 sm:px-8">
-        <div className="mx-auto max-w-4xl scroll-reveal">
+        <div className="mx-auto max-w-3xl scroll-reveal">
           <BrowserFrame url="styleme.app/wardrobe">
             <MockNav active="wardrobe" />
             <div className="bg-neo-bg p-4" style={{ backgroundImage: "linear-gradient(90deg, color-mix(in srgb, var(--neo-border) 4%, transparent) 1px, transparent 1px), linear-gradient(180deg, color-mix(in srgb, var(--neo-border) 4%, transparent) 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
@@ -451,7 +431,7 @@ export default function LandingPage() {
                 </div>
               </div>
               {/* Garment grid with metadata */}
-              <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-5">
+              <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {[
                   { top: "bg-neo-accent", bg: "bg-neo-pink-soft", label: "Linen Shirt", meta: "Cotton · Summer" },
                   { top: "bg-neo-blue", bg: "bg-neo-cyan-soft", label: "Slim Jeans", meta: "Denim · All-year" },
@@ -480,7 +460,7 @@ export default function LandingPage() {
 
       {/* Upload mockup */}
       <section className="px-5 pb-10 sm:px-8">
-        <div className="mx-auto max-w-4xl scroll-reveal">
+        <div className="mx-auto max-w-3xl scroll-reveal">
           <BrowserFrame url="styleme.app/upload">
             <MockNav active="upload" />
             <div className="bg-neo-bg p-4" style={{ backgroundImage: "linear-gradient(90deg, color-mix(in srgb, var(--neo-border) 4%, transparent) 1px, transparent 1px), linear-gradient(180deg, color-mix(in srgb, var(--neo-border) 4%, transparent) 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
@@ -508,8 +488,8 @@ export default function LandingPage() {
                   ))}
                 </div>
                 {/* Segmentation visual */}
-                <div className="mt-2 grid w-full grid-cols-5 gap-2">
-                  <div className="col-span-2 border-2 border-neo-border bg-neo-surface shadow-[2px_2px_0_0_var(--neo-shadow)]">
+                <div className="mt-2 grid w-full grid-cols-4 gap-2">
+                  <div className="col-span-1 border-2 border-neo-border bg-neo-surface shadow-[2px_2px_0_0_var(--neo-shadow)]">
                     <div className="flex aspect-3/4 w-full items-center justify-center bg-neo-lavender texture-crosshatch">
                       <div className="flex flex-col items-center gap-0.5 opacity-60">
                         <div className="h-4 w-4 rounded-full bg-neo-peach" />
@@ -522,7 +502,7 @@ export default function LandingPage() {
                       <span className="text-[7px] font-extrabold uppercase text-neo-mute">Original</span>
                     </div>
                   </div>
-                  <div className="col-span-3 grid grid-cols-3 gap-1.5">
+                  <div className="col-span-3 grid grid-cols-3 gap-2">
                     {[
                       { bg: "bg-neo-cyan-soft", label: "Shirt", tags: "Blue · Cotton · Casual" },
                       { bg: "bg-neo-yellow-soft", label: "Pants", tags: "Khaki · Twill · Smart" },
@@ -653,8 +633,8 @@ export default function LandingPage() {
           </div>
           <h2 className="text-3xl font-black uppercase tracking-tight text-neo-ink sm:text-5xl">Ready to style smarter?</h2>
           <div className="h-[3px] w-20 bg-neo-accent" />
-          <p className="max-w-md text-sm font-medium leading-relaxed text-neo-mute sm:text-base">Upload your first outfit and let AI handle the rest. Your closet, your style, zero effort.</p>
-          <a href={APP_URL} className="neo-btn bg-neo-accent px-10 py-4 text-sm text-white animate-pulse-scale sm:text-base">Get Started</a>
+          <p className="max-w-md text-sm font-medium leading-relaxed text-neo-mute sm:text-base">Be the first to experience AI-powered styling. Join the waitlist and get early access when we launch.</p>
+          <WaitlistButton className="neo-btn bg-neo-accent px-10 py-4 text-sm text-white animate-pulse-scale sm:text-base">Join Waitlist</WaitlistButton>
         </div>
       </section>
 
